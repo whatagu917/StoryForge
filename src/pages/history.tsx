@@ -22,6 +22,7 @@ export default function History() {
   const [error, setError] = useState<Error | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [compareMode, setCompareMode] = useState<'side-by-side' | 'unified'>('side-by-side');
+  const [selectedRevisions, setSelectedRevisions] = useState<string[]>([]);
 
   // Load revisions from localStorage
   useEffect(() => {
@@ -38,7 +39,7 @@ export default function History() {
   }, []);
 
   const handleRestore = (revision: Revision) => {
-    if (!window.confirm('この版に復元してもよろしいですか？')) return;
+    if (!window.confirm('Are you sure you want to restore this version?')) return;
 
     try {
       // Load current stories
@@ -66,26 +67,45 @@ export default function History() {
 
       // Save updated stories
       localStorage.setItem('storyforge-stories', JSON.stringify(updatedStories));
-      alert('復元が完了しました');
+      alert('Restoration completed');
     } catch (err) {
-      console.error('復元に失敗しました:', err);
-      alert('復元に失敗しました');
+      console.error('Failed to restore:', err);
+      alert('Failed to restore');
     }
   };
 
   const handleCopyContent = (content: string) => {
     navigator.clipboard.writeText(content);
-    alert('コンテンツをクリップボードにコピーしました');
+    alert('Content copied to clipboard');
   };
 
   const handleEdit = (revision: Revision) => {
     router.push(`/editor?story=${revision.storyId}&chapter=${revision.chapterId}`);
   };
 
+  const handleDeleteRevisions = () => {
+    if (selectedRevisions.length === 0) return;
+    if (!window.confirm('Are you sure you want to delete the selected revisions?')) return;
+
+    const updatedRevisions = revisions.filter(revision => !selectedRevisions.includes(revision.id));
+    setRevisions(updatedRevisions);
+    localStorage.setItem('storyforge-revisions', JSON.stringify(updatedRevisions));
+    setSelectedRevisions([]);
+  };
+
+  const handleDeleteAllRevisions = () => {
+    if (revisions.length === 0) return;
+    if (!window.confirm('Are you sure you want to delete all revisions?')) return;
+
+    setRevisions([]);
+    localStorage.setItem('storyforge-revisions', JSON.stringify([]));
+    setSelectedRevisions([]);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-gray-500">読み込み中...</div>
+        <div className="text-gray-500">Loading...</div>
       </div>
     );
   }
@@ -93,7 +113,7 @@ export default function History() {
   if (error) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <div className="text-red-500">エラーが発生しました: {error.message}</div>
+        <div className="text-red-500">Error: {error.message}</div>
       </div>
     );
   }
@@ -111,15 +131,29 @@ export default function History() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <h1 className="text-xl font-semibold">
-              {selectedRevision ? `Chapter ${selectedRevision.chapterNumber}: ${selectedRevision.chapterTitle}` : '履歴'}
+              {selectedRevision ? `Chapter ${selectedRevision.chapterNumber}: ${selectedRevision.chapterTitle}` : 'History'}
             </h1>
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDeleteAllRevisions}
+              disabled={revisions.length === 0}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+            >
+              Delete All
+            </button>
+            <button
+              onClick={handleDeleteRevisions}
+              disabled={selectedRevisions.length === 0}
+              className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+            >
+              Delete Selected
+            </button>
+            <button
               onClick={() => setCompareMode(mode => mode === 'side-by-side' ? 'unified' : 'side-by-side')}
               className="px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50"
             >
-              {compareMode === 'side-by-side' ? '上下表示' : '左右表示'}
+              {compareMode === 'side-by-side' ? 'Unified View' : 'Side by Side'}
             </button>
           </div>
         </div>
@@ -137,8 +171,8 @@ export default function History() {
               <Clock className="w-5 h-5 text-gray-500" />
               <span>
                 {selectedRevision
-                  ? `${selectedRevision.timestamp} - ${selectedRevision.type === 'ai' ? 'AI提案' : '手動編集'}`
-                  : '履歴を選択'}
+                  ? `${selectedRevision.timestamp} - ${selectedRevision.type === 'ai' ? 'AI Suggestion' : 'Manual Edit'}`
+                  : 'Select History'}
               </span>
             </div>
             <ChevronDown className={`w-5 h-5 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -147,26 +181,42 @@ export default function History() {
           {isDropdownOpen && (
             <div className="absolute w-full mt-2 bg-white shadow-lg rounded-lg z-10 max-h-64 overflow-y-auto">
               {revisions.map((revision) => (
-                <button
+                <div
                   key={revision.id}
-                  onClick={() => {
-                    setSelectedRevision(revision);
-                    setIsDropdownOpen(false);
-                  }}
-                  className="w-full p-4 flex items-center gap-3 hover:bg-gray-50 text-left"
+                  className="flex items-center gap-3 p-4 hover:bg-gray-50"
                 >
-                  {revision.type === 'ai' ? (
-                    <Wand2 className="w-5 h-5 text-purple-600" />
-                  ) : (
-                    <Edit className="w-5 h-5 text-blue-600" />
-                  )}
-                  <div>
-                    <div className="font-medium">
-                      {revision.type === 'ai' ? 'AI提案' : '手動編集'}
+                  <input
+                    type="checkbox"
+                    checked={selectedRevisions.includes(revision.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedRevisions([...selectedRevisions, revision.id]);
+                      } else {
+                        setSelectedRevisions(selectedRevisions.filter(id => id !== revision.id));
+                      }
+                    }}
+                    className="w-4 h-4"
+                  />
+                  <button
+                    onClick={() => {
+                      setSelectedRevision(revision);
+                      setIsDropdownOpen(false);
+                    }}
+                    className="flex-1 text-left"
+                  >
+                    {revision.type === 'ai' ? (
+                      <Wand2 className="w-5 h-5 text-purple-600" />
+                    ) : (
+                      <Edit className="w-5 h-5 text-blue-600" />
+                    )}
+                    <div>
+                      <div className="font-medium">
+                        {revision.type === 'ai' ? 'AI Suggestion' : 'Manual Edit'}
+                      </div>
+                      <div className="text-sm text-gray-500">{revision.timestamp}</div>
                     </div>
-                    <div className="text-sm text-gray-500">{revision.timestamp}</div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -179,7 +229,7 @@ export default function History() {
               {/* Previous Version */}
               <div className={`${compareMode === 'side-by-side' ? 'w-1/2' : 'h-1/2'} space-y-2`}>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">変更前</h3>
+                  <h3 className="text-sm font-medium text-gray-500">Before</h3>
                   <button
                     onClick={() => handleCopyContent(selectedRevision.previousContent)}
                     className="p-1 hover:bg-gray-100 rounded"
@@ -197,7 +247,7 @@ export default function History() {
               {/* Current Version */}
               <div className={`${compareMode === 'side-by-side' ? 'w-1/2' : 'h-1/2'} space-y-2`}>
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-medium text-gray-500">変更後</h3>
+                  <h3 className="text-sm font-medium text-gray-500">After</h3>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleCopyContent(selectedRevision.content)}
@@ -228,7 +278,7 @@ export default function History() {
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
               >
                 <RotateCcw className="w-4 h-4" />
-                このバージョンに復元
+                Restore this version
               </button>
             </div>
           </div>

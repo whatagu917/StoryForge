@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { MessageSquare, Wand2, History, Settings, X, Save, Edit2, RotateCcw } from 'lucide-react';
+import { MessageSquare, Wand2, History, Settings, X, Save, Edit2, RotateCcw, Sparkles } from 'lucide-react';
+
+interface StyleProfile {
+  id: string;
+  name: string;
+  description: string;
+  sampleText: string;
+  strength: number;
+  embedding?: number[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 interface Chapter {
   id: string;
@@ -8,6 +19,13 @@ interface Chapter {
   title: string;
   content: string;
 }
+
+const EMPTY_CHAPTER: Chapter = {
+  id: '',
+  title: '',
+  content: '',
+  number: 0
+};
 
 interface Story {
   id: string;
@@ -124,7 +142,7 @@ export default function Editor() {
   const { id } = router.query;
   const [stories, setStories] = useState<Story[]>([]);
   const [currentStory, setCurrentStory] = useState<Story | null>(null);
-  const [currentChapter, setCurrentChapter] = useState<string | null>(null);
+  const [currentChapter, setCurrentChapter] = useState<Chapter>(EMPTY_CHAPTER);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isNewChapterModalOpen, setIsNewChapterModalOpen] = useState(false);
   const [isNewStoryModalOpen, setIsNewStoryModalOpen] = useState(false);
@@ -140,22 +158,107 @@ export default function Editor() {
   const [editStoryTitle, setEditStoryTitle] = useState('');
   const [isChaptersVisible, setIsChaptersVisible] = useState(true);
   const [lastSavedContent, setLastSavedContent] = useState<string>('');
+  const [styles, setStyles] = useState<StyleProfile[]>([]);
+  const [selectedStyleProfile, setSelectedStyleProfile] = useState<StyleProfile | null>(null);
+  const [isStyleProfileModalOpen, setIsStyleProfileModalOpen] = useState(false);
 
   // Load stories from localStorage when the component mounts
   useEffect(() => {
     const savedStories = localStorage.getItem('storyforge-stories');
     if (savedStories) {
-      const parsedStories = JSON.parse(savedStories);
-      setStories(parsedStories);
-      if (parsedStories.length > 0) {
-        setCurrentStory(parsedStories[0]);
-        setLastSavedState(parsedStories[0]);
+      try {
+        const parsedStories = JSON.parse(savedStories);
+        setStories(parsedStories);
+
+        // Set current story and chapter from localStorage
+        const savedCurrentStory = localStorage.getItem('storyforge-current-story');
+        const savedCurrentChapter = localStorage.getItem('storyforge-current-chapter');
+        
+        if (savedCurrentStory) {
+          const story = parsedStories.find((s: Story) => s.id === JSON.parse(savedCurrentStory).id);
+          if (story) {
+            setCurrentStory(story);
+            setLastSavedState(story);
+            
+            if (savedCurrentChapter) {
+              const chapter = story.chapters.find((c: Chapter) => c.id === JSON.parse(savedCurrentChapter).id);
+              if (chapter) {
+                // データの整合性を確保
+                const validChapter: Chapter = {
+                  id: chapter.id || '',
+                  title: chapter.title || '',
+                  content: chapter.content || '',
+                  number: typeof chapter.number === 'number' ? chapter.number : 0
+                };
+                setCurrentChapter(validChapter);
+                setLastSavedContent(validChapter.content);
+              } else {
+                // チャプターが見つからない場合はEMPTY_CHAPTERを使用
+                setCurrentChapter(EMPTY_CHAPTER);
+                setLastSavedContent('');
+              }
+            } else if (story.chapters.length > 0) {
+              const firstChapter = story.chapters[0];
+              const validChapter: Chapter = {
+                id: firstChapter.id || '',
+                title: firstChapter.title || '',
+                content: firstChapter.content || '',
+                number: typeof firstChapter.number === 'number' ? firstChapter.number : 0
+              };
+              setCurrentChapter(validChapter);
+              setLastSavedContent(validChapter.content);
+            } else {
+              // チャプターが存在しない場合はEMPTY_CHAPTERを使用
+              setCurrentChapter(EMPTY_CHAPTER);
+              setLastSavedContent('');
+            }
+          } else {
+            // ストーリーが見つからない場合は初期状態にリセット
+            setCurrentStory(null);
+            setCurrentChapter(EMPTY_CHAPTER);
+            setLastSavedContent('');
+          }
+        } else if (parsedStories.length > 0) {
+          const firstStory = parsedStories[0];
+          setCurrentStory(firstStory);
+          setLastSavedState(firstStory);
+          
+          if (firstStory.chapters.length > 0) {
+            const firstChapter = firstStory.chapters[0];
+            const validChapter: Chapter = {
+              id: firstChapter.id || '',
+              title: firstChapter.title || '',
+              content: firstChapter.content || '',
+              number: typeof firstChapter.number === 'number' ? firstChapter.number : 0
+            };
+            setCurrentChapter(validChapter);
+            setLastSavedContent(validChapter.content);
+          } else {
+            // チャプターが存在しない場合はEMPTY_CHAPTERを使用
+            setCurrentChapter(EMPTY_CHAPTER);
+            setLastSavedContent('');
+          }
+        } else {
+          // ストーリーが存在しない場合は初期状態にリセット
+          setCurrentStory(null);
+          setCurrentChapter(EMPTY_CHAPTER);
+          setLastSavedContent('');
+        }
+      } catch (error) {
+        console.error('Error parsing stories:', error);
+        // エラー時は初期状態にリセット
+        setCurrentStory(null);
+        setCurrentChapter(EMPTY_CHAPTER);
+        setLastSavedContent('');
       }
     }
-    
-    const savedCurrentChapter = localStorage.getItem('storyforge-current-chapter');
-    if (savedCurrentChapter) {
-      setCurrentChapter(savedCurrentChapter);
+  }, []);
+
+  // Load styles from localStorage
+  useEffect(() => {
+    const savedStyles = localStorage.getItem('storyforge-styles');
+    if (savedStyles) {
+      setStyles(JSON.parse(savedStyles));
     }
   }, []);
 
@@ -164,12 +267,26 @@ export default function Editor() {
     localStorage.setItem('storyforge-stories', JSON.stringify(stories));
   }, [stories]);
 
+  // Save current story to localStorage whenever it changes
+  useEffect(() => {
+    if (currentStory) {
+      localStorage.setItem('storyforge-current-story', JSON.stringify(currentStory));
+    }
+  }, [currentStory]);
+
   // Save current chapter to localStorage whenever it changes
   useEffect(() => {
     if (currentChapter) {
-      localStorage.setItem('storyforge-current-chapter', currentChapter);
+      localStorage.setItem('storyforge-current-chapter', JSON.stringify(currentChapter));
     }
   }, [currentChapter]);
+
+  // Save last saved content to localStorage whenever it changes
+  useEffect(() => {
+    if (lastSavedContent !== null) {
+      localStorage.setItem('storyforge-last-content', lastSavedContent);
+    }
+  }, [lastSavedContent]);
 
   const handleCreateStory = (title: string) => {
     const newStory: Story = {
@@ -186,14 +303,9 @@ export default function Editor() {
     
     setStories(prev => prev.filter(story => story.id !== storyId));
     if (currentStory?.id === storyId) {
-      if (stories.length > 1) {
-        const nextStory = stories.find(story => story.id !== storyId);
-        setCurrentStory(nextStory || null);
-        setLastSavedState(nextStory || null);
-      } else {
-        setCurrentStory(null);
-        setLastSavedState(null);
-      }
+      const nextStory = stories.find(story => story.id !== storyId);
+      setCurrentStory(nextStory || null);
+      setLastSavedState(nextStory || null);
     }
   };
 
@@ -216,7 +328,7 @@ export default function Editor() {
     setStories(prev => prev.map(story => 
       story.id === currentStory.id ? updatedStory : story
     ));
-    setCurrentChapter(newChapter.id);
+    setCurrentChapter(newChapter);
   };
 
   const saveRevision = (chapter: Chapter, type: 'ai' | 'manual', previousContent: string) => {
@@ -240,14 +352,6 @@ export default function Editor() {
   const handleUpdateChapter = (chapterId: string, updates: Partial<Chapter>) => {
     if (!currentStory) return;
     
-    const currentChapterData = currentStory.chapters.find(chapter => chapter.id === chapterId);
-    if (!currentChapterData) return;
-
-    // Save revision if content is being updated
-    if ('content' in updates && updates.content !== currentChapterData.content) {
-      saveRevision(currentChapterData, 'manual', currentChapterData.content);
-    }
-    
     const updatedStory = {
       ...currentStory,
       chapters: currentStory.chapters.map(chapter =>
@@ -261,47 +365,119 @@ export default function Editor() {
     setStories(prev => prev.map(story => 
       story.id === currentStory.id ? updatedStory : story
     ));
+
+    // Update currentChapter if it's the one being edited
+    if (currentChapter && currentChapter.id === chapterId) {
+      setCurrentChapter({ ...currentChapter, ...updates });
+    }
   };
 
-  const handleSave = async () => {
-    if (!currentChapter || !currentStory) return;
-    
+  const handleSave = () => {
+    if (!currentStory || !currentChapter) return;
+
     setIsSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const currentChapterData = currentStory.chapters.find(c => c.id === currentChapter);
-      if (currentChapterData) {
-        const currentContent = currentChapterData.content;
-        setLastSavedContent(currentContent);
-        setLastSavedState(currentStory);
-        // Save revision when manually saving
-        saveRevision(currentChapterData, 'manual', currentContent);
-      }
-      alert('変更を保存しました');
-    } catch (error) {
-      console.error('保存に失敗しました:', error);
-      alert('保存に失敗しました');
+      // Save current content to last-content
+      setLastSavedContent(currentChapter.content);
+      localStorage.setItem('storyforge-last-content', currentChapter.content);
+
+      // Update the chapter content in the story
+      const updatedStories = stories.map(story => {
+        if (story.id === currentStory.id) {
+          return {
+            ...story,
+            chapters: story.chapters.map(chapter => {
+              if (chapter.id === currentChapter.id) {
+                return {
+                  ...chapter,
+                  content: currentChapter.content
+                };
+              }
+              return chapter;
+            })
+          };
+        }
+        return story;
+      });
+
+      // Save updated stories
+      localStorage.setItem('storyforge-stories', JSON.stringify(updatedStories));
+      setStories(updatedStories);
+
+      // Save revision
+      const revision: Revision = {
+        id: Date.now().toString(),
+        chapterId: currentChapter.id,
+        storyId: currentStory.id,
+        type: 'manual',
+        timestamp: new Date().toLocaleString('ja-JP'),
+        content: currentChapter.content,
+        previousContent: lastSavedContent || '',
+        chapterTitle: currentChapter.title,
+        chapterNumber: currentChapter.number
+      };
+
+      const savedRevisions = localStorage.getItem('storyforge-revisions');
+      const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
+      localStorage.setItem('storyforge-revisions', JSON.stringify([revision, ...revisions]));
+
+      alert('Changes saved successfully');
+    } catch (err) {
+      console.error('Failed to save:', err);
+      alert('Failed to save changes');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleRevert = () => {
-    if (!currentChapter || !currentStory) return;
+    if (!currentChapter || !currentStory || !lastSavedContent) return;
     
-    if (window.confirm('保存前の状態に戻します。よろしいですか？')) {
+    if (window.confirm('Are you sure you want to revert to the last saved state?')) {
+      // Update the current chapter content
+      const updatedChapter = {
+        ...currentChapter,
+        content: lastSavedContent
+      };
+      
+      // Update the story with the reverted chapter
       const updatedStory = {
         ...currentStory,
         chapters: currentStory.chapters.map(chapter =>
-          chapter.id === currentChapter
-            ? { ...chapter, content: lastSavedContent }
+          chapter.id === currentChapter.id
+            ? updatedChapter
             : chapter
         )
       };
+      
+      // Update states
+      setCurrentChapter(updatedChapter);
       setCurrentStory(updatedStory);
       setStories(prev => prev.map(story => 
         story.id === currentStory.id ? updatedStory : story
       ));
+
+      // Save the updated story to localStorage
+      localStorage.setItem('storyforge-stories', JSON.stringify(stories.map(story => 
+        story.id === currentStory.id ? updatedStory : story
+      )));
+
+      // Save revision
+      const revision: Revision = {
+        id: Date.now().toString(),
+        chapterId: currentChapter.id,
+        storyId: currentStory.id,
+        type: 'manual',
+        timestamp: new Date().toLocaleString('ja-JP'),
+        content: lastSavedContent,
+        previousContent: currentChapter.content,
+        chapterTitle: currentChapter.title,
+        chapterNumber: currentChapter.number
+      };
+
+      const savedRevisions = localStorage.getItem('storyforge-revisions');
+      const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
+      localStorage.setItem('storyforge-revisions', JSON.stringify([revision, ...revisions]));
     }
   };
 
@@ -376,30 +552,59 @@ export default function Editor() {
     setIsLoading(true);
 
     try {
-      const currentContent = currentStory?.chapters.find(c => c.id === currentChapter)?.content || '';
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          currentContent,
-          message: inputMessage,
-        }),
-      });
+      const currentContent = currentStory?.chapters.find(c => c.id === currentChapter.id)?.content || '';
+      
+      // 文体プロファイルが選択されている場合、文体模倣APIを使用
+      if (selectedStyleProfile) {
+        const response = await fetch('/api/imitate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: inputMessage,
+            styleId: selectedStyleProfile.id,
+            strength: selectedStyleProfile.strength,
+            styleProfile: selectedStyleProfile,
+          }),
+        });
 
-      if (!response.ok) {
-        throw new Error('API request failed');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'API request failed');
+        }
+
+        const { result } = await response.json();
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: result,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+      } else {
+        // 通常のチャットAPIを使用
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            currentContent,
+            message: inputMessage,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'API request failed');
+        }
+
+        const data = await response.json();
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: data.content,
+        };
+        setMessages(prev => [...prev, assistantMessage]);
       }
-
-      const data = await response.json();
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.content || '申し訳ありません。回答を生成できませんでした。',
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      setAiSuggestions(prev => [...prev, assistantMessage.content]);
     } catch (error) {
       console.error('AIとの通信に失敗しました:', error);
       alert('AIとの通信に失敗しました。');
@@ -411,7 +616,7 @@ export default function Editor() {
   const handleApplySuggestion = (suggestion: string) => {
     if (!currentChapter || !currentStory) return;
 
-    const currentChapterData = currentStory.chapters.find(c => c.id === currentChapter);
+    const currentChapterData = currentStory.chapters.find(c => c.id === currentChapter.id);
     if (!currentChapterData) return;
 
     const currentContent = currentChapterData.content;
@@ -420,7 +625,7 @@ export default function Editor() {
     // Save revision before applying AI suggestion
     saveRevision(currentChapterData, 'ai', currentContent);
     
-    handleUpdateChapter(currentChapter, { content: updatedContent });
+    handleUpdateChapter(currentChapter.id, { content: updatedContent });
   };
 
   const handleDeleteChapter = (chapterId: string) => {
@@ -436,12 +641,12 @@ export default function Editor() {
       story.id === currentStory.id ? updatedStory : story
     ));
 
-    if (currentChapter === chapterId) {
+    if (currentChapter && currentChapter.id === chapterId) {
       const remainingChapters = updatedStory.chapters;
       if (remainingChapters.length > 0) {
-        setCurrentChapter(remainingChapters[0].id);
+        setCurrentChapter(remainingChapters[0]);
       } else {
-        setCurrentChapter(null);
+        setCurrentChapter(EMPTY_CHAPTER);
       }
     }
   };
@@ -452,9 +657,6 @@ export default function Editor() {
       <div className="w-64 bg-white rounded-lg shadow-sm p-4">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-semibold">Structure</h2>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <Settings className="w-4 h-4" />
-          </button>
         </div>
         <div className="space-y-4">
           {/* Stories List */}
@@ -524,17 +726,15 @@ export default function Editor() {
                       >
                         <Edit2 className="w-3 h-3" />
                       </button>
-                      {stories.length > 1 && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteStory(story.id);
-                          }}
-                          className="p-1 hover:bg-gray-200 rounded text-red-600"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteStory(story.id);
+                        }}
+                        className="p-1 hover:bg-gray-200 rounded text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 )}
@@ -546,7 +746,7 @@ export default function Editor() {
                       <div
                         key={chapter.id}
                         className={`w-full px-3 py-2 rounded-md ${
-                          currentChapter === chapter.id
+                          currentChapter && currentChapter.id === chapter.id
                             ? 'bg-blue-50 text-blue-700'
                             : 'hover:bg-gray-50'
                         }`}
@@ -586,7 +786,7 @@ export default function Editor() {
                         ) : (
                           <div className="flex items-center justify-between">
                             <button
-                              onClick={() => setCurrentChapter(chapter.id)}
+                              onClick={() => setCurrentChapter(chapter)}
                               className="flex-1 text-left"
                             >
                               Chapter {chapter.number}: {chapter.title}
@@ -631,51 +831,42 @@ export default function Editor() {
 
       {/* Main content - Editor */}
       <div className="flex-1 bg-white rounded-lg shadow-sm p-4 relative">
-        {currentChapter && currentStory ? (
+        {currentChapter.id !== EMPTY_CHAPTER.id && currentStory ? (
           <>
             <div className="mb-4">
               <input
                 type="text"
-                value={currentStory.chapters.find(c => c.id === currentChapter)?.title || ''}
-                onChange={(e) => handleUpdateChapter(currentChapter, { title: e.target.value })}
+                value={currentChapter.title}
+                onChange={(e) => handleUpdateChapter(currentChapter.id, { title: e.target.value })}
                 placeholder="Chapter Title"
                 className="w-full text-2xl font-bold border-none focus:outline-none"
               />
             </div>
             <div className="prose max-w-none">
               <textarea
-                value={currentStory.chapters.find(c => c.id === currentChapter)?.content || ''}
-                onChange={(e) => handleUpdateChapter(currentChapter, { content: e.target.value })}
-                className="w-full h-[calc(100vh-32rem)] resize-none border-none focus:outline-none"
+                value={currentChapter.content}
+                onChange={(e) => handleUpdateChapter(currentChapter.id, { content: e.target.value })}
+                className="w-full h-[calc(100vh-16rem)] resize-none border-none focus:outline-none p-4 text-gray-800"
                 placeholder="Start writing your story..."
               />
             </div>
             <div className="absolute bottom-[99px] right-4 flex gap-2">
-              <button
-                onClick={handleRevert}
-                disabled={!lastSavedContent}
-                className={`px-6 rounded-md flex items-center gap-2 ${
-                  !lastSavedContent
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-gray-600 hover:bg-gray-700'
-                } text-white shadow-md h-[42px]`}
-                title="保存前の状態に戻す"
-              >
-                <RotateCcw className="w-4 h-4" />
-                元に戻す
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={isSaving}
-                className={`px-6 rounded-md flex items-center gap-2 ${
-                  isSaving
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } text-white shadow-md h-[42px]`}
-              >
-                <Save className="w-4 h-4" />
-                {isSaving ? '保存中...' : '保存'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleRevert}
+                  disabled={!lastSavedContent}
+                  className="px-3 py-1.5 text-sm border rounded-md hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Revert
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -695,11 +886,18 @@ export default function Editor() {
               title="AI Rewrite"
               onClick={() => {
                 if (!currentChapter) return;
-                const currentContent = currentStory?.chapters.find(c => c.id === currentChapter)?.content || '';
+                const currentContent = currentStory?.chapters.find(c => c.id === currentChapter.id)?.content || '';
                 setInputMessage(`以下の文章を改善してください：\n\n${currentContent}`);
               }}
             >
               <Wand2 className="w-4 h-4" />
+            </button>
+            <button 
+              className="p-1 hover:bg-gray-100 rounded" 
+              title="Style Profile"
+              onClick={() => setIsStyleProfileModalOpen(true)}
+            >
+              <Sparkles className="w-4 h-4" />
             </button>
             <button className="p-1 hover:bg-gray-100 rounded" title="History">
               <History className="w-4 h-4" />
@@ -707,57 +905,65 @@ export default function Editor() {
           </div>
         </div>
         
-        {/* AI Chat Interface */}
-        <div className="h-[calc(100vh-12rem)] flex flex-col">
-          <div className="flex-1 overflow-y-auto mb-4">
-            {messages.map((message, index) => (
-              <div 
-                key={index} 
-                className={`mb-4 p-3 rounded-lg ${
-                  message.role === 'user' ? 'bg-gray-100' : 'bg-blue-50'
-                }`}
-              >
-                <p className="text-sm text-gray-700">{message.content}</p>
-                {message.role === 'assistant' && (
-                  <button 
-                    onClick={() => handleApplySuggestion(message.content)}
-                    className="mt-2 text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    提案を適用
-                  </button>
-                )}
+        {selectedStyleProfile && (
+          <div className="mb-4 p-2 bg-blue-50 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <p className="text-sm font-medium text-blue-800">{selectedStyleProfile.name}</p>
+                <p className="text-xs text-blue-600">強度: {Math.round(selectedStyleProfile.strength * 100)}%</p>
               </div>
-            ))}
-            {isLoading && (
-              <div className="text-center text-gray-500">
-                考え中...
-              </div>
-            )}
-          </div>
-          
-          <div className="border-t pt-4">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="AIに質問する..."
-                className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={isLoading}
-              />
-              <button 
-                onClick={handleSendMessage}
-                disabled={isLoading || !inputMessage.trim()}
-                className={`p-2 rounded-md ${
-                  isLoading || !inputMessage.trim()
-                    ? 'bg-gray-400 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } text-white`}
+              <button
+                onClick={() => setSelectedStyleProfile(null)}
+                className="p-1 hover:bg-blue-100 rounded"
               >
-                <MessageSquare className="w-5 h-5" />
+                <X className="w-4 h-4 text-blue-600" />
               </button>
             </div>
+          </div>
+        )}
+        
+        <div className="space-y-4 mb-4">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`p-3 rounded-lg ${
+                message.role === 'user'
+                  ? 'bg-blue-50 text-blue-800 ml-8'
+                  : 'bg-gray-50 text-gray-800 mr-8'
+              }`}
+            >
+              {message.content}
+            </div>
+          ))}
+          {isLoading && (
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t pt-4">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="AIに質問する..."
+              className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              disabled={isLoading}
+            />
+            <button 
+              onClick={handleSendMessage}
+              disabled={isLoading || !inputMessage.trim()}
+              className={`p-2 rounded-md ${
+                isLoading || !inputMessage.trim()
+                  ? 'bg-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700'
+              } text-white`}
+            >
+              <MessageSquare className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -818,6 +1024,53 @@ export default function Editor() {
           </form>
         </div>
       </div>
+
+      {/* Style Profile Modal */}
+      {isStyleProfileModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[32rem]">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">文体プロファイル</h3>
+              <button
+                onClick={() => setIsStyleProfileModalOpen(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              {styles.map(style => (
+                <div
+                  key={style.id}
+                  className={`p-4 rounded-lg cursor-pointer ${
+                    selectedStyleProfile?.id === style.id
+                      ? 'bg-blue-50 border border-blue-200'
+                      : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => {
+                    setSelectedStyleProfile(style);
+                    setIsStyleProfileModalOpen(false);
+                  }}
+                >
+                  <h4 className="font-medium">{style.name}</h4>
+                  <p className="text-sm text-gray-500">{style.description}</p>
+                  <div className="mt-2 flex items-center">
+                    <div className="w-full h-2 bg-gray-200 rounded-full">
+                      <div
+                        className="h-2 bg-blue-600 rounded-full"
+                        style={{ width: `${style.strength * 100}%` }}
+                      />
+                    </div>
+                    <span className="ml-2 text-sm text-gray-500">
+                      {Math.round(style.strength * 100)}%
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

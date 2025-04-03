@@ -201,386 +201,189 @@ export default function Styles() {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-4 py-5 sm:p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-medium text-gray-900">文体プロファイル</h2>
-            <button
-              onClick={() => setIsNewStyleModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              <Plus className="h-5 w-5 mr-2" />
-              新規作成
-            </button>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto p-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Style Profiles</h1>
+          <button
+            onClick={() => setIsNewStyleModalOpen(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            Create New Style
+          </button>
+        </div>
 
-          <div className="mb-4">
-            <div className="relative">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="文体を検索..."
-                className="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {filteredStyles.length === 0 ? (
-            <div className="text-center py-12">
-              <Wand2 className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">文体プロファイルがありません</h3>
-              <p className="mt-1 text-sm text-gray-500">新しい文体プロファイルを作成してください。</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredStyles.map((style) => (
-                <div
-                  key={style.id}
-                  className={`flex items-start justify-between p-4 rounded-lg cursor-pointer transition-colors ${
-                    selectedStyle?.id === style.id
-                      ? 'bg-indigo-50 border border-indigo-200'
-                      : 'bg-gray-50 hover:bg-gray-100'
-                  }`}
-                  onClick={() => setSelectedStyle(style)}
-                >
-                  <div className="flex-1">
-                    <h3 className="text-sm font-medium text-gray-900">{style.name}</h3>
-                    <p className="mt-1 text-sm text-gray-500">{style.description}</p>
-                    <div className="mt-2 flex items-center space-x-4">
-                      <div className="flex items-center">
-                        <div className="w-24 h-2 bg-gray-200 rounded-full">
-                          <div
-                            className="h-2 bg-indigo-600 rounded-full"
-                            style={{ width: `${style.strength * 100}%` }}
-                          />
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-4">
+            {styles.length === 0 ? (
+              <p className="text-gray-500 text-center">No style profiles available</p>
+            ) : (
+              <div className="space-y-4">
+                {styles.map((style) => (
+                  <div
+                    key={style.id}
+                    className="border rounded-lg p-4 hover:bg-gray-50"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-medium text-gray-900">{style.name}</h3>
+                        <p className="text-sm text-gray-500">{style.description}</p>
+                        <div className="mt-2">
+                          <span className="text-sm text-gray-500">Strength: {style.strength}%</span>
                         </div>
-                        <span className="ml-2 text-sm text-gray-500">
-                          {Math.round(style.strength * 100)}%
-                        </span>
                       </div>
-                      <span className="text-sm text-gray-500">
-                        {new Date(style.createdAt).toLocaleDateString()}
-                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditStyle(style)}
+                          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteStyle(style.id)}
+                          className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="ml-4 flex items-center space-x-2">
-                    <button 
-                      className="p-1 text-gray-400 hover:text-gray-500"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditStyle(style);
-                      }}
-                    >
-                      <Edit2 className="h-5 w-5" />
-                    </button>
-                    <button 
-                      className="p-1 text-gray-400 hover:text-red-500"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteStyle(style.id);
-                      }}
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selectedStyle && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-medium text-gray-900">文体詳細</h3>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleEditStyle(selectedStyle)}
-                  className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 flex items-center gap-1"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  編集
-                </button>
-                <button
-                  onClick={() => handleDeleteStyle(selectedStyle.id)}
-                  className="px-3 py-1 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 flex items-center gap-1"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  削除
-                </button>
+                ))}
               </div>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">名前</h4>
-                <p className="mt-1 text-sm text-gray-900">{selectedStyle.name}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">説明</h4>
-                <p className="mt-1 text-sm text-gray-900">{selectedStyle.description}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">強度</h4>
-                <div className="mt-1 flex items-center">
-                  <div className="w-full h-2 bg-gray-200 rounded-full">
-                    <div
-                      className="h-2 bg-indigo-600 rounded-full"
-                      style={{ width: `${selectedStyle.strength * 100}%` }}
-                    />
-                  </div>
-                  <span className="ml-2 text-sm text-gray-500">
-                    {Math.round(selectedStyle.strength * 100)}%
-                  </span>
-                </div>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">サンプルテキスト</h4>
-                <div className="mt-1 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedStyle.sampleText}</p>
-                </div>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500">作成日時</h4>
-                <p className="mt-1 text-sm text-gray-900">
-                  {new Date(selectedStyle.createdAt).toLocaleString()}
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      )}
 
-      {selectedStyle && (
-        <div className="bg-white shadow rounded-lg">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">文体模倣</h3>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="imitation-text" className="block text-sm font-medium text-gray-700">
-                  模倣したいテキスト
-                </label>
-                <textarea
-                  id="imitation-text"
-                  value={imitationText}
-                  onChange={(e) => setImitationText(e.target.value)}
-                  rows={4}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="模倣したいテキストを入力してください..."
-                />
-              </div>
-              <div className="flex justify-end">
-                <button
-                  onClick={handleImitateStyle}
-                  disabled={!imitationText.trim() || isImitatingStyle}
-                  className="px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-md hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  {isImitatingStyle ? '生成中...' : '文体模倣'}
-                </button>
-              </div>
-              {imitationResult && (
-                <div className="mt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-medium text-gray-500">模倣結果</h4>
-                    <button
-                      onClick={handleCopyResult}
-                      className="px-2 py-1 text-xs font-medium text-white bg-gray-600 rounded-md hover:bg-gray-700 flex items-center gap-1"
-                    >
-                      <Copy className="w-3 h-3" />
-                      コピー
-                    </button>
-                  </div>
-                  <div className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{imitationResult}</p>
-                  </div>
+        {isNewStyleModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold mb-4">
+                {editingStyle ? 'Edit Style Profile' : 'Create New Style Profile'}
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    type="text"
+                    value={newStyleName}
+                    onChange={(e) => setNewStyleName(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Style Modal */}
-      {isNewStyleModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-[32rem]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">新規文体プロファイル</h3>
-              <button
-                onClick={() => setIsNewStyleModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="style-name" className="block text-sm font-medium text-gray-700">
-                  名前
-                </label>
-                <input
-                  type="text"
-                  id="style-name"
-                  value={newStyleName}
-                  onChange={(e) => setNewStyleName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="文体の名前を入力..."
-                />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={newStyleDescription}
+                    onChange={(e) => setNewStyleDescription(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Sample Text</label>
+                  <textarea
+                    value={newStyleSampleText}
+                    onChange={(e) => setNewStyleSampleText(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    rows={5}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Strength</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={newStyleStrength}
+                    onChange={(e) => setNewStyleStrength(parseInt(e.target.value))}
+                    className="mt-1 block w-full"
+                  />
+                  <div className="text-sm text-gray-500 text-right">{newStyleStrength}%</div>
+                </div>
               </div>
-              <div>
-                <label htmlFor="style-description" className="block text-sm font-medium text-gray-700">
-                  説明
-                </label>
-                <textarea
-                  id="style-description"
-                  value={newStyleDescription}
-                  onChange={(e) => setNewStyleDescription(e.target.value)}
-                  rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="文体の説明を入力..."
-                />
-              </div>
-              <div>
-                <label htmlFor="style-sample" className="block text-sm font-medium text-gray-700">
-                  サンプルテキスト
-                </label>
-                <textarea
-                  id="style-sample"
-                  value={newStyleSampleText}
-                  onChange={(e) => setNewStyleSampleText(e.target.value)}
-                  rows={6}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  placeholder="この文体のサンプルテキストを入力..."
-                />
-              </div>
-              <div>
-                <label htmlFor="style-strength" className="block text-sm font-medium text-gray-700">
-                  強度: {Math.round(newStyleStrength * 100)}%
-                </label>
-                <input
-                  type="range"
-                  id="style-strength"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={newStyleStrength}
-                  onChange={(e) => setNewStyleStrength(parseFloat(e.target.value))}
-                  className="mt-1 block w-full"
-                />
-              </div>
-              <div className="flex justify-end gap-3">
+              <div className="mt-6 flex justify-end gap-2">
                 <button
                   onClick={() => setIsNewStyleModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md border"
+                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
                 >
-                  キャンセル
+                  Cancel
                 </button>
                 <button
                   onClick={handleAddStyle}
-                  disabled={!newStyleName.trim() || !newStyleDescription.trim() || !newStyleSampleText.trim() || isGeneratingStyle}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  {isGeneratingStyle ? '作成中...' : '作成'}
+                  {editingStyle ? 'Save Changes' : 'Create'}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Edit Style Modal */}
-      {isEditStyleModalOpen && editingStyle && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-[32rem]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">文体プロファイルの編集</h3>
-              <button
-                onClick={() => setIsEditStyleModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="edit-style-name" className="block text-sm font-medium text-gray-700">
-                  名前
-                </label>
-                <input
-                  type="text"
-                  id="edit-style-name"
-                  value={editStyleName}
-                  onChange={(e) => setEditStyleName(e.target.value)}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
+        {isEditStyleModalOpen && editingStyle && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold mb-4">
+                Edit Style Profile
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Name</label>
+                  <input
+                    type="text"
+                    value={editStyleName}
+                    onChange={(e) => setEditStyleName(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={editStyleDescription}
+                    onChange={(e) => setEditStyleDescription(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    rows={3}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Sample Text</label>
+                  <textarea
+                    value={editStyleSampleText}
+                    onChange={(e) => setEditStyleSampleText(e.target.value)}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                    rows={5}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Strength</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={editStyleStrength}
+                    onChange={(e) => setEditStyleStrength(parseInt(e.target.value))}
+                    className="mt-1 block w-full"
+                  />
+                  <div className="text-sm text-gray-500 text-right">{editStyleStrength}%</div>
+                </div>
               </div>
-              <div>
-                <label htmlFor="edit-style-description" className="block text-sm font-medium text-gray-700">
-                  説明
-                </label>
-                <textarea
-                  id="edit-style-description"
-                  value={editStyleDescription}
-                  onChange={(e) => setEditStyleDescription(e.target.value)}
-                  rows={2}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="edit-style-sample" className="block text-sm font-medium text-gray-700">
-                  サンプルテキスト
-                </label>
-                <textarea
-                  id="edit-style-sample"
-                  value={editStyleSampleText}
-                  onChange={(e) => setEditStyleSampleText(e.target.value)}
-                  rows={6}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="edit-style-strength" className="block text-sm font-medium text-gray-700">
-                  強度: {Math.round(editStyleStrength * 100)}%
-                </label>
-                <input
-                  type="range"
-                  id="edit-style-strength"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={editStyleStrength}
-                  onChange={(e) => setEditStyleStrength(parseFloat(e.target.value))}
-                  className="mt-1 block w-full"
-                />
-              </div>
-              <div className="flex justify-end gap-3">
+              <div className="mt-6 flex justify-end gap-2">
                 <button
                   onClick={() => setIsEditStyleModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md border"
+                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
                 >
-                  キャンセル
+                  Cancel
                 </button>
                 <button
                   onClick={handleSaveEdit}
-                  disabled={!editStyleName.trim() || !editStyleDescription.trim() || !editStyleSampleText.trim() || isGeneratingStyle}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  {isGeneratingStyle ? '保存中...' : '保存'}
+                  Save Changes
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 } 
