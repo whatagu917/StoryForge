@@ -49,12 +49,16 @@ export default function History() {
         }
 
         const data = await response.json();
-        if (data.success && data.data) {
-          setRevisions(data.data);
+        if (data.success) {
+          // リビジョンが存在しない場合は空の配列を設定
+          setRevisions(data.data || []);
+        } else {
+          throw new Error(data.message || 'Failed to load revisions');
         }
-        setIsLoading(false);
       } catch (err) {
+        console.error('Failed to load revisions:', err);
         setError(err as Error);
+      } finally {
         setIsLoading(false);
       }
     };

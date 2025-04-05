@@ -8,9 +8,11 @@ interface StyleProfile {
   id: string;
   name: string;
   description: string;
-  sampleText: string;
-  strength: number;
-  embedding?: number[];
+  settings: {
+    sampleText: string;
+    strength: number;
+    embedding?: number[];
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -20,8 +22,9 @@ export default function Styles() {
   const { user, isAuthenticated } = useAuth();
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [selectedStyle, setSelectedStyle] = useState<StyleProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
   const [isNewStyleModalOpen, setIsNewStyleModalOpen] = useState(false);
   const [isEditStyleModalOpen, setIsEditStyleModalOpen] = useState(false);
   const [editingStyle, setEditingStyle] = useState<StyleProfile | null>(null);
@@ -38,6 +41,7 @@ export default function Styles() {
   const [imitationText, setImitationText] = useState('');
   const [imitationResult, setImitationResult] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateForm, setShowCreateForm] = useState(true);
 
   // Load styles from API
   useEffect(() => {
@@ -61,12 +65,14 @@ export default function Styles() {
         }
 
         const data = await response.json();
-        if (data.success && data.data) {
-          setStyles(data.data);
+        if (data.success) {
+          setStyles(data.data || []);
+        } else {
+          throw new Error(data.message || 'Failed to load styles');
         }
       } catch (err) {
         console.error('Failed to load styles:', err);
-        setError(err as Error);
+        setError('スタイルプロファイルの読み込みに失敗しました');
       } finally {
         setIsLoading(false);
       }
@@ -76,9 +82,12 @@ export default function Styles() {
   }, [isAuthenticated, router]);
 
   const handleAddStyle = async () => {
-    if (!newStyleName.trim() || !newStyleDescription.trim() || !newStyleSampleText.trim()) return;
+    if (!newStyleName || !newStyleDescription || !newStyleSampleText) {
+      alert('すべての項目を入力してください');
+      return;
+    }
 
-    setIsGeneratingStyle(true);
+    setIsCreating(true);
     try {
       // Generate embedding
       const embedResponse = await fetch('/api/embed', {
@@ -87,16 +96,17 @@ export default function Styles() {
           ...getAuthHeader(),
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: newStyleSampleText,
-        }),
+        body: JSON.stringify({ text: newStyleSampleText }),
       });
 
       if (!embedResponse.ok) {
         throw new Error('Failed to generate embedding');
       }
 
-      const { embedding } = await embedResponse.json();
+      const embedData = await embedResponse.json();
+      if (!embedData.success || !embedData.embedding) {
+        throw new Error('Failed to generate embedding');
+      }
 
       // Create style profile
       const response = await fetch('/api/styles', {
@@ -108,9 +118,11 @@ export default function Styles() {
         body: JSON.stringify({
           name: newStyleName,
           description: newStyleDescription,
-          sampleText: newStyleSampleText,
-          strength: newStyleStrength,
-          embedding,
+          settings: {
+            sampleText: newStyleSampleText,
+            strength: newStyleStrength,
+            embedding: embedData.embedding,
+          },
         }),
       });
 
@@ -119,19 +131,21 @@ export default function Styles() {
       }
 
       const data = await response.json();
-      if (data.success && data.data) {
-        setStyles([data.data, ...styles]);
+      if (data.success) {
+        setStyles(prev => [...prev, data.data]);
         setNewStyleName('');
         setNewStyleDescription('');
         setNewStyleSampleText('');
         setNewStyleStrength(0.5);
-        setIsNewStyleModalOpen(false);
+        alert('スタイルプロファイルを作成しました');
+      } else {
+        throw new Error(data.message || 'Failed to create style profile');
       }
-    } catch (error) {
-      console.error('Failed to add style profile:', error);
-      setError(error as Error);
+    } catch (err) {
+      console.error('Failed to create style profile:', err);
+      alert('スタイルプロファイルの作成に失敗しました');
     } finally {
-      setIsGeneratingStyle(false);
+      setIsCreating(false);
     }
   };
 
@@ -139,8 +153,8 @@ export default function Styles() {
     setEditingStyle(style);
     setEditStyleName(style.name);
     setEditStyleDescription(style.description);
-    setEditStyleSampleText(style.sampleText);
-    setEditStyleStrength(style.strength);
+    setEditStyleSampleText(style.settings.sampleText);
+    setEditStyleStrength(style.settings.strength);
     setIsEditStyleModalOpen(true);
   };
 
@@ -177,9 +191,11 @@ export default function Styles() {
         body: JSON.stringify({
           name: editStyleName,
           description: editStyleDescription,
-          sampleText: editStyleSampleText,
-          strength: editStyleStrength,
-          embedding,
+          settings: {
+            sampleText: editStyleSampleText,
+            strength: editStyleStrength,
+            embedding,
+          },
         }),
       });
 
@@ -198,17 +214,17 @@ export default function Styles() {
       }
     } catch (error) {
       console.error('Failed to update style profile:', error);
-      setError(error as Error);
+      setError('スタイルプロファイルの更新に失敗しました');
     } finally {
       setIsGeneratingStyle(false);
     }
   };
 
-  const handleDeleteStyle = async (styleId: string) => {
-    if (!window.confirm('この文体プロファイルを削除してもよろしいですか？')) return;
+  const handleDeleteStyle = async (id: string) => {
+    if (!window.confirm('このスタイルプロファイルを削除してもよろしいですか？')) return;
 
     try {
-      const response = await fetch(`/api/styles/${styleId}`, {
+      const response = await fetch(`/api/styles/${id}`, {
         method: 'DELETE',
         headers: {
           ...getAuthHeader(),
@@ -220,13 +236,16 @@ export default function Styles() {
         throw new Error('Failed to delete style profile');
       }
 
-      setStyles(prev => prev.filter(style => style.id !== styleId));
-      if (selectedStyle?.id === styleId) {
-        setSelectedStyle(null);
+      const data = await response.json();
+      if (data.success) {
+        setStyles(prev => prev.filter(style => style.id !== id));
+        alert('スタイルプロファイルを削除しました');
+      } else {
+        throw new Error(data.message || 'Failed to delete style profile');
       }
     } catch (err) {
       console.error('Failed to delete style profile:', err);
-      alert('Failed to delete style profile');
+      alert('スタイルプロファイルの削除に失敗しました');
     }
   };
 
@@ -244,7 +263,7 @@ export default function Styles() {
         body: JSON.stringify({
           styleId: selectedStyle.id,
           text: imitationText,
-          strength: selectedStyle.strength,
+          strength: selectedStyle.settings.strength,
         }),
       });
 
@@ -256,7 +275,7 @@ export default function Styles() {
       setImitationResult(result);
     } catch (error) {
       console.error('Failed to imitate style:', error);
-      setError(error as Error);
+      setError('文体模倣に失敗しました');
     } finally {
       setIsImitatingStyle(false);
     }
@@ -273,189 +292,138 @@ export default function Styles() {
     style.description.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Style Profiles</h1>
-          <button
-            onClick={() => setIsNewStyleModalOpen(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Create New Style
-          </button>
-        </div>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">スタイルプロファイル</h1>
+        <button
+          onClick={() => setShowCreateForm(!showCreateForm)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+        >
+          {showCreateForm ? 'フォームを隠す' : '新規作成'}
+        </button>
+      </div>
 
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-4">
-            {styles.length === 0 ? (
-              <p className="text-gray-500 text-center">No style profiles available</p>
-            ) : (
-              <div className="space-y-4">
-                {styles.map((style) => (
-                  <div
-                    key={style.id}
-                    className="border rounded-lg p-4 hover:bg-gray-50"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-medium text-gray-900">{style.name}</h3>
-                        <p className="text-sm text-gray-500">{style.description}</p>
-                        <div className="mt-2">
-                          <span className="text-sm text-gray-500">Strength: {style.strength}%</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEditStyle(style)}
-                          className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDeleteStyle(style.id)}
-                          className="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+      {showCreateForm && (
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4">Create New Style Profile</h2>
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="styleName" className="block text-sm font-medium text-gray-700 mb-1">
+                スタイル名
+              </label>
+              <input
+                type="text"
+                id="styleName"
+                value={newStyleName}
+                onChange={(e) => setNewStyleName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="例: シンプルで読みやすい文体"
+              />
+            </div>
+            <div>
+              <label htmlFor="styleDescription" className="block text-sm font-medium text-gray-700 mb-1">
+                説明
+              </label>
+              <textarea
+                id="styleDescription"
+                value={newStyleDescription}
+                onChange={(e) => setNewStyleDescription(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={3}
+                placeholder="例: 簡潔で読みやすく、専門用語を避けた文体です。"
+              />
+            </div>
+            <div>
+              <label htmlFor="styleSampleText" className="block text-sm font-medium text-gray-700 mb-1">
+                サンプルテキスト
+              </label>
+              <textarea
+                id="styleSampleText"
+                value={newStyleSampleText}
+                onChange={(e) => setNewStyleSampleText(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={5}
+                placeholder="例: この文章は、シンプルで読みやすい文体のサンプルです。複雑な表現を避け、簡潔に要点を伝えることを心がけています。"
+              />
+            </div>
+            <div>
+              <label htmlFor="styleStrength" className="block text-sm font-medium text-gray-700 mb-1">
+                強度: {Math.round(newStyleStrength * 100)}%
+              </label>
+              <input
+                type="range"
+                id="styleStrength"
+                min="0"
+                max="1"
+                step="0.01"
+                value={newStyleStrength}
+                onChange={(e) => setNewStyleStrength(parseFloat(e.target.value))}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddStyle}
+                disabled={isCreating}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+              >
+                {isCreating ? '作成中...' : '作成'}
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        {isNewStyleModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                {editingStyle ? 'Edit Style Profile' : 'Create New Style Profile'}
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    type="text"
-                    value={newStyleName}
-                    onChange={(e) => setNewStyleName(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
-                  <textarea
-                    value={newStyleDescription}
-                    onChange={(e) => setNewStyleDescription(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Sample Text</label>
-                  <textarea
-                    value={newStyleSampleText}
-                    onChange={(e) => setNewStyleSampleText(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={5}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Strength</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={newStyleStrength}
-                    onChange={(e) => setNewStyleStrength(parseInt(e.target.value))}
-                    className="mt-1 block w-full"
-                  />
-                  <div className="text-sm text-gray-500 text-right">{newStyleStrength}%</div>
-                </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {styles.map((style) => (
+          <div key={style.id} className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-semibold">{style.name}</h3>
+              <button
+                onClick={() => handleDeleteStyle(style.id)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-gray-600 mb-4">{style.description}</p>
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-medium text-gray-700">強度</span>
+                <span className="text-sm text-gray-500">{Math.round(style.settings.strength * 100)}%</span>
               </div>
-              <div className="mt-6 flex justify-end gap-2">
-                <button
-                  onClick={() => setIsNewStyleModalOpen(false)}
-                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddStyle}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  {editingStyle ? 'Save Changes' : 'Create'}
-                </button>
+              <div className="w-full h-2 bg-gray-200 rounded-full">
+                <div
+                  className="h-2 bg-blue-600 rounded-full"
+                  style={{ width: `${style.settings.strength * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">サンプルテキスト</h4>
+              <div className="bg-gray-50 p-3 rounded-md text-sm text-gray-600">
+                {style.settings.sampleText}
               </div>
             </div>
           </div>
-        )}
-
-        {isEditStyleModalOpen && editingStyle && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <h2 className="text-xl font-bold mb-4">
-                Edit Style Profile
-              </h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    type="text"
-                    value={editStyleName}
-                    onChange={(e) => setEditStyleName(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Description</label>
-                  <textarea
-                    value={editStyleDescription}
-                    onChange={(e) => setEditStyleDescription(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={3}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Sample Text</label>
-                  <textarea
-                    value={editStyleSampleText}
-                    onChange={(e) => setEditStyleSampleText(e.target.value)}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-                    rows={5}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Strength</label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={editStyleStrength}
-                    onChange={(e) => setEditStyleStrength(parseInt(e.target.value))}
-                    className="mt-1 block w-full"
-                  />
-                  <div className="text-sm text-gray-500 text-right">{editStyleStrength}%</div>
-                </div>
-              </div>
-              <div className="mt-6 flex justify-end gap-2">
-                <button
-                  onClick={() => setIsEditStyleModalOpen(false)}
-                  className="px-4 py-2 border rounded-md hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );

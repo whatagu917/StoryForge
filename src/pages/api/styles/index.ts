@@ -28,6 +28,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     try {
       const { name, description, settings } = req.body;
 
+      if (!name || !description || !settings) {
+        return res.status(400).json({ success: false, message: 'Missing required fields' });
+      }
+
       const style = await prisma.styleProfile.create({
         data: {
           name,

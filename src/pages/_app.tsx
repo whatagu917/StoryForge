@@ -11,7 +11,7 @@ function AppContent({ Component, pageProps }: AppProps) {
 
   useEffect(() => {
     if (router.pathname === '/') {
-      router.replace('/editor')
+      router.replace('/auth/login')
     }
   }, [router])
 

@@ -13,7 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'PUT') {
     try {
-      const { name, description, settings } = req.body;
+      const { name, description, sampleText, strength, embedding } = req.body;
 
       const style = await prisma.styleProfile.update({
         where: {
@@ -23,7 +23,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         data: {
           name,
           description,
-          settings,
+          settings: {
+            sampleText,
+            strength,
+            embedding,
+          },
         },
       });
 

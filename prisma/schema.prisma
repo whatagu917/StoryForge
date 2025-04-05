@@ -6,12 +6,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id            String         @id @default(cuid())
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
   email         String         @unique
   name          String?
   revisions     Revision[]
@@ -22,32 +22,37 @@ model User {
 }
 
 model Revision {
-  id        String   @id @default(cuid())
-  content   String
-  chapterId String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  content         String
+  previousContent String
+  chapterId       String   @db.ObjectId
+  storyId         String   @db.ObjectId
+  type            String   // 'ai' or 'manual'
+  chapterTitle    String
+  chapterNumber   Int
+  userId          String   @db.ObjectId
+  user            User     @relation(fields: [userId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Idea {
-  id          String   @id @default(cuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String
   tags        String[]
-  userId      String
+  userId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 model StyleProfile {
-  id          String   @id @default(cuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   description String
   settings    Json
-  userId      String
+  userId      String   @db.ObjectId
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

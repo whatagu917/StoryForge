@@ -8,9 +8,11 @@ interface StyleProfile {
   id: string;
   name: string;
   description: string;
-  sampleText: string;
-  strength: number;
-  embedding?: number[];
+  settings: {
+    sampleText: string;
+    strength: number;
+    embedding?: number[];
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -173,6 +175,71 @@ export default function Editor() {
     return user ? `${baseKey}-${user.id}` : baseKey;
   };
 
+  // チャプターIDを修正する関数
+  const fixChapterIds = (story: Story): Story => {
+    // 有効なMongoDB ObjectIDを生成する関数
+    const generateObjectId = () => {
+      // 24文字の16進数を生成
+      const hexChars = '0123456789abcdef';
+      let result = '';
+      
+      // タイムスタンプ部分（8文字）
+      const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+      result += timestamp;
+      
+      // ランダム部分（16文字）
+      for (let i = 0; i < 16; i++) {
+        result += hexChars.charAt(Math.floor(Math.random() * hexChars.length));
+      }
+      
+      return result;
+    };
+
+    // チャプターIDが有効なObjectID形式かチェックする関数
+    const isValidObjectId = (id: string) => {
+      return /^[0-9a-fA-F]{24}$/.test(id);
+    };
+
+    // 無効なIDを持つチャプターを修正
+    const fixedChapters = story.chapters.map(chapter => {
+      if (!isValidObjectId(chapter.id)) {
+        console.log(`Fixing invalid chapter ID: ${chapter.id}`);
+        return { ...chapter, id: generateObjectId() };
+      }
+      return chapter;
+    });
+
+    return { ...story, chapters: fixedChapters };
+  };
+
+  // 修正したチャプターIDをサーバーに保存する関数
+  const saveFixedChapterIds = async (story: Story) => {
+    try {
+      const response = await fetch(`/api/stories/${story.id}`, {
+        method: 'PUT',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(story),
+      });
+
+      if (!response.ok) {
+        throw new Error('チャプターIDの修正に失敗しました');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        console.log('チャプターIDを修正しました:', story.id);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to save fixed chapter IDs:', err);
+      return false;
+    }
+  };
+
   // ストーリーの読み込み
   useEffect(() => {
     const loadStories = async () => {
@@ -197,14 +264,20 @@ export default function Editor() {
 
         const data = await response.json();
         if (data.success && data.data) {
-          // APIから返されるデータには既にidプロパティが含まれているため、変換は不要
-          console.log('Loaded stories:', data.data);
-          setStories(data.data);
+          // チャプターIDを修正
+          const fixedStories = data.data.map(fixChapterIds);
+          console.log('Loaded stories:', fixedStories);
+          setStories(fixedStories);
+          
+          // 修正したチャプターIDをサーバーに保存
+          for (const story of fixedStories) {
+            await saveFixedChapterIds(story);
+          }
           
           // 最後に編集したストーリーがあれば、それを選択
           const lastEditedStoryId = localStorage.getItem(getStorageKey('storyforge-last-edited-story'));
           if (lastEditedStoryId) {
-            const lastEditedStory = data.data.find((story: Story) => story.id === lastEditedStoryId);
+            const lastEditedStory = fixedStories.find((story: Story) => story.id === lastEditedStoryId);
             if (lastEditedStory) {
               setCurrentStory(lastEditedStory);
               if (lastEditedStory.chapters.length > 0) {
@@ -224,13 +297,43 @@ export default function Editor() {
     loadStories();
   }, [isAuthenticated, router, user]);
 
-  // Load styles from localStorage
+  // Load styles from API
   useEffect(() => {
-    const savedStyles = localStorage.getItem('storyforge-styles');
-    if (savedStyles) {
-      setStyles(JSON.parse(savedStyles));
-    }
-  }, []);
+    const loadStyles = async () => {
+      if (!isAuthenticated) {
+        router.push('/auth/login');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/styles', {
+          headers: {
+            ...getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load styles');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setStyles(data.data || []);
+        } else {
+          throw new Error(data.message || 'Failed to load styles');
+        }
+      } catch (err) {
+        console.error('Failed to load styles:', err);
+        setError('スタイルプロファイルの読み込みに失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStyles();
+  }, [isAuthenticated, router]);
 
   // Save stories to localStorage whenever they change
   useEffect(() => {
@@ -354,8 +457,26 @@ export default function Editor() {
   const handleCreateChapter = (title: string, number: number) => {
     if (!currentStory) return;
     
+    // Generate a valid MongoDB ObjectID (24 characters hex string)
+    const generateObjectId = () => {
+      // 24文字の16進数を生成
+      const hexChars = '0123456789abcdef';
+      let result = '';
+      
+      // タイムスタンプ部分（8文字）
+      const timestamp = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+      result += timestamp;
+      
+      // ランダム部分（16文字）
+      for (let i = 0; i < 16; i++) {
+        result += hexChars.charAt(Math.floor(Math.random() * hexChars.length));
+      }
+      
+      return result;
+    };
+    
     const newChapter: Chapter = {
-      id: Date.now().toString(),
+      id: generateObjectId(),
       title,
       content: '',
       number,
@@ -455,22 +576,36 @@ export default function Editor() {
           story.id === currentStory.id ? data.data : story
         ));
 
-        // Save revision
-        const revision: Revision = {
-          id: Date.now().toString(),
-          chapterId: currentChapter.id,
-          storyId: currentStory.id,
-          type: 'manual',
-          timestamp: new Date().toLocaleString('ja-JP'),
-          content: currentChapter.content,
-          previousContent: lastSavedContent || '',
-          chapterTitle: currentChapter.title,
-          chapterNumber: currentChapter.number
+        // Check if chapterId is a valid MongoDB ObjectID (12 bytes hex string)
+        const isValidObjectId = (id: string) => {
+          return /^[0-9a-fA-F]{24}$/.test(id);
         };
 
-        const savedRevisions = localStorage.getItem(getStorageKey('storyforge-revisions'));
-        const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
-        localStorage.setItem(getStorageKey('storyforge-revisions'), JSON.stringify([revision, ...revisions]));
+        // Create revision only if chapterId is valid
+        if (isValidObjectId(currentChapter.id)) {
+          const revisionResponse = await fetch('/api/revisions', {
+            method: 'POST',
+            headers: {
+              ...getAuthHeader(),
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              content: currentChapter.content,
+              previousContent: lastSavedContent || '',
+              chapterId: currentChapter.id,
+              storyId: currentStory.id,
+              type: 'manual',
+              chapterTitle: currentChapter.title,
+              chapterNumber: currentChapter.number
+            }),
+          });
+
+          if (!revisionResponse.ok) {
+            console.error('Failed to create revision');
+          }
+        } else {
+          console.error('Invalid chapterId format:', currentChapter.id);
+        }
 
         alert('変更が保存されました');
       }
@@ -592,7 +727,7 @@ export default function Editor() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || !currentChapter) return;
+    if (!inputMessage.trim()) return;
 
     const userMessage: Message = {
       id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -605,37 +740,50 @@ export default function Editor() {
     setIsLoading(true);
 
     try {
+      // メッセージ配列を作成（IDを除外）
+      const messageHistory = [...messages, userMessage].map(({ role, content }) => ({
+        role,
+        content
+      }));
+
+      // スタイルプロファイルの情報を含めてリクエストを送信
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeader(),
         },
         body: JSON.stringify({
-          message: inputMessage,
-          chapterId: currentChapter.id,
-          storyId: currentStory?.id,
+          messages: messageHistory,
+          styleProfile: selectedStyleProfile ? {
+            sampleText: selectedStyleProfile.settings.sampleText,
+            strength: selectedStyleProfile.settings.strength,
+            embedding: selectedStyleProfile.settings.embedding
+          } : null
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get AI response');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to get AI response');
       }
 
-      const { result } = await response.json();
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to get AI response');
+      }
+
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         role: 'assistant',
-        content: result,
+        content: data.message,
       };
+
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage: Message = {
-        id: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
-        content: '申し訳ありません。エラーが発生しました。もう一度お試しください。',
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      alert('メッセージの送信に失敗しました。もう一度お試しください。');
     } finally {
       setIsLoading(false);
     }
@@ -849,7 +997,7 @@ export default function Editor() {
               onClick={() => setIsNewStoryModalOpen(true)}
               className="w-full text-left px-3 py-2 text-green-600 hover:bg-green-50 rounded-md"
             >
-              + New Story
+              + New Title
             </button>
           </div>
         </div>
@@ -936,7 +1084,7 @@ export default function Editor() {
             <div className="flex justify-between items-center">
               <div>
                 <p className="text-sm font-medium text-blue-800">{selectedStyleProfile.name}</p>
-                <p className="text-xs text-blue-600">強度: {Math.round(selectedStyleProfile.strength * 100)}%</p>
+                <p className="text-xs text-blue-600">強度: {Math.round(selectedStyleProfile?.settings?.strength ? selectedStyleProfile.settings.strength * 100 : 0)}%</p>
               </div>
               <button
                 onClick={() => setSelectedStyleProfile(null)}
@@ -1005,7 +1153,7 @@ export default function Editor() {
       <div className={`fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 ${isNewStoryModalOpen ? '' : 'hidden'}`}>
         <div className="bg-white rounded-lg p-6 w-96">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold">New Story</h3>
+            <h3 className="text-lg font-semibold">New Title</h3>
             <button onClick={() => setIsNewStoryModalOpen(false)} className="p-1 hover:bg-gray-100 rounded">
               <X className="w-5 h-5" />
             </button>
@@ -1043,7 +1191,7 @@ export default function Editor() {
                   className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md"
                   disabled={isSaving}
                 >
-                  {isSaving ? 'Creating...' : 'Create Story'}
+                  {isSaving ? 'Creating...' : 'Create Title'}
                 </button>
               </div>
             </div>
@@ -1054,45 +1202,95 @@ export default function Editor() {
       {/* Style Profile Modal */}
       {isStyleProfileModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-[32rem]">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">文体プロファイル</h3>
-              <button
-                onClick={() => setIsStyleProfileModalOpen(false)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          <div className="bg-white rounded-lg p-6 w-[48rem] max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-2xl font-semibold">文体プロファイル</h3>
+                <p className="text-sm text-gray-500 mt-1">物語の文体を選択してください</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => router.push('/styles')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  文体を管理
+                </button>
+                <button
+                  onClick={() => setIsStyleProfileModalOpen(false)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
-            <div className="space-y-4">
+
+            <div className="grid grid-cols-1 gap-6">
               {styles.map(style => (
                 <div
                   key={style.id}
-                  className={`p-4 rounded-lg cursor-pointer ${
+                  className={`p-6 rounded-xl border transition-all ${
                     selectedStyleProfile?.id === style.id
-                      ? 'bg-blue-50 border border-blue-200'
-                      : 'hover:bg-gray-50'
+                      ? 'bg-blue-50 border-blue-200 shadow-md'
+                      : 'border-gray-200 hover:border-blue-200 hover:shadow-md'
                   }`}
-                  onClick={() => {
-                    setSelectedStyleProfile(style);
-                    setIsStyleProfileModalOpen(false);
-                  }}
                 >
-                  <h4 className="font-medium">{style.name}</h4>
-                  <p className="text-sm text-gray-500">{style.description}</p>
-                  <div className="mt-2 flex items-center">
-                    <div className="w-full h-2 bg-gray-200 rounded-full">
-                      <div
-                        className="h-2 bg-blue-600 rounded-full"
-                        style={{ width: `${style.strength * 100}%` }}
-                      />
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex-1">
+                      <h4 className="text-xl font-medium mb-2">{style.name}</h4>
+                      <p className="text-gray-600">{style.description}</p>
                     </div>
-                    <span className="ml-2 text-sm text-gray-500">
-                      {Math.round(style.strength * 100)}%
-                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStyleProfile(style);
+                          setIsStyleProfileModalOpen(false);
+                        }}
+                        className={`px-4 py-2 rounded-lg transition-colors ${
+                          selectedStyleProfile?.id === style.id
+                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                            : 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
+                        }`}
+                      >
+                        {selectedStyleProfile?.id === style.id ? '選択中' : '選択'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-700">文体の強さ</span>
+                        <span className="text-sm text-gray-500">
+                          {Math.round(style?.settings?.strength ? style.settings.strength * 100 : 0)}%
+                        </span>
+                      </div>
+                      <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className="absolute top-0 left-0 h-full bg-blue-600 rounded-full transition-all"
+                          style={{ width: `${style?.settings?.strength ? style.settings.strength * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <h5 className="text-sm font-medium text-gray-700 mb-2">サンプルテキスト</h5>
+                      <div className="bg-white border border-gray-200 rounded-lg p-4 text-gray-600">
+                        {style?.settings?.sampleText || 'サンプルテキストがありません'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setIsStyleProfileModalOpen(false)}
+                className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>

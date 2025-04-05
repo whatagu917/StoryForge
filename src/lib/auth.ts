@@ -82,17 +82,27 @@ export function withAuth(
 }
 
 // クライアントサイドでAPIリクエストを送信する際に認証ヘッダーを生成する関数
-export function getAuthHeader(): { Authorization: string } | {} {
-  if (typeof window === 'undefined') {
-    return {};
-  }
+export function getAuthHeader(req?: NextApiRequest): { Authorization: string; userId?: string } | null {
+  if (req) {
+    // Server-side
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return null;
 
-  const token = localStorage.getItem('token');
-  if (!token) {
-    return {};
+    const token = authHeader.replace('Bearer ', '');
+    try {
+      const decoded = verifyToken(token);
+      if (decoded && decoded.id) {
+        return { Authorization: authHeader, userId: decoded.id };
+      }
+    } catch (error) {
+      console.error('Error verifying token:', error);
+    }
+    return null;
+  } else {
+    // Client-side
+    if (typeof window === 'undefined') return null;
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    return { Authorization: `Bearer ${token}` };
   }
-
-  return {
-    Authorization: `Bearer ${token}`,
-  };
 } 

@@ -46,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
     localStorage.setItem('token', token);
     localStorage.setItem('user', JSON.stringify(user));
+    router.push('/editor');
   };
 
   const register = (token: string, user: AuthUser) => {
