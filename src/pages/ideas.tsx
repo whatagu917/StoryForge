@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Lightbulb, Sparkles, Tag, Plus, Search, Filter, Wand2, ArrowRight, X, Edit2 } from 'lucide-react';
 import { useRouter } from 'next/router';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAuthHeader } from '@/lib/auth';
 
 interface Idea {
   id: string;
@@ -46,6 +48,7 @@ interface Story {
 
 export default function Ideas() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -70,13 +73,44 @@ export default function Ideas() {
   const [styleProfileContent, setStyleProfileContent] = useState('');
   const [isGeneratingStyle, setIsGeneratingStyle] = useState(false);
 
-  // Load ideas and stories from localStorage
+  // Load ideas from API
   useEffect(() => {
-    const savedIdeas = localStorage.getItem('storyforge-ideas');
-    if (savedIdeas) {
-      setIdeas(JSON.parse(savedIdeas));
-    }
+    const loadIdeas = async () => {
+      if (!isAuthenticated) {
+        router.push('/auth/login');
+        return;
+      }
 
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/ideas', {
+          headers: {
+            ...getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load ideas');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data) {
+          setIdeas(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to load ideas:', err);
+        setError(err as Error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadIdeas();
+  }, [isAuthenticated, router]);
+
+  // Load stories from localStorage
+  useEffect(() => {
     const savedStories = localStorage.getItem('storyforge-stories');
     if (savedStories) {
       setStories(JSON.parse(savedStories));
@@ -88,23 +122,40 @@ export default function Ideas() {
     localStorage.setItem('storyforge-ideas', JSON.stringify(ideas));
   }, [ideas]);
 
-  const handleAddIdea = () => {
+  const handleAddIdea = async () => {
     if (!newIdeaTitle.trim() || !newIdeaDescription.trim()) return;
 
-    const newIdea: Idea = {
-      id: Date.now().toString(),
-      title: newIdeaTitle,
-      description: newIdeaDescription,
-      tags: newIdeaTags,
-      aiGenerated: false,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const response = await fetch('/api/ideas', {
+        method: 'POST',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: newIdeaTitle,
+          description: newIdeaDescription,
+          tags: newIdeaTags,
+          aiGenerated: false,
+        }),
+      });
 
-    setIdeas([newIdea, ...ideas]);
-    setNewIdeaTitle('');
-    setNewIdeaDescription('');
-    setNewIdeaTags([]);
-    setIsNewIdeaModalOpen(false);
+      if (!response.ok) {
+        throw new Error('Failed to create idea');
+      }
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        setIdeas([data.data, ...ideas]);
+        setNewIdeaTitle('');
+        setNewIdeaDescription('');
+        setNewIdeaTags([]);
+        setIsNewIdeaModalOpen(false);
+      }
+    } catch (err) {
+      console.error('Failed to create idea:', err);
+      alert('Failed to create idea');
+    }
   };
 
   const handleGeneratePlot = async (idea: Idea) => {
@@ -238,11 +289,29 @@ export default function Ideas() {
     alert('アイデアを適用しました');
   };
 
-  const handleDeleteIdea = (ideaId: string) => {
+  const handleDeleteIdea = async (ideaId: string) => {
     if (!window.confirm('このアイデアを削除してもよろしいですか？')) return;
-    setIdeas(prev => prev.filter(idea => idea.id !== ideaId));
-    if (selectedIdea?.id === ideaId) {
-      setSelectedIdea(null);
+
+    try {
+      const response = await fetch(`/api/ideas/${ideaId}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete idea');
+      }
+
+      setIdeas(prev => prev.filter(idea => idea.id !== ideaId));
+      if (selectedIdea?.id === ideaId) {
+        setSelectedIdea(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete idea:', err);
+      alert('Failed to delete idea');
     }
   };
 
@@ -298,22 +367,40 @@ export default function Ideas() {
     setIsEditIdeaModalOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingIdea || !editIdeaTitle.trim() || !editIdeaDescription.trim()) return;
 
-    const updatedIdea = {
-      ...editingIdea,
-      title: editIdeaTitle,
-      description: editIdeaDescription,
-      tags: editIdeaTags,
-    };
+    try {
+      const response = await fetch(`/api/ideas/${editingIdea.id}`, {
+        method: 'PUT',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: editIdeaTitle,
+          description: editIdeaDescription,
+          tags: editIdeaTags,
+        }),
+      });
 
-    setIdeas(prev => prev.map(i => i.id === editingIdea.id ? updatedIdea : i));
-    if (selectedIdea?.id === editingIdea.id) {
-      setSelectedIdea(updatedIdea);
+      if (!response.ok) {
+        throw new Error('Failed to update idea');
+      }
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        setIdeas(prev => prev.map(i => i.id === editingIdea.id ? data.data : i));
+        if (selectedIdea?.id === editingIdea.id) {
+          setSelectedIdea(data.data);
+        }
+        setIsEditIdeaModalOpen(false);
+        setEditingIdea(null);
+      }
+    } catch (err) {
+      console.error('Failed to update idea:', err);
+      alert('Failed to update idea');
     }
-    setIsEditIdeaModalOpen(false);
-    setEditingIdea(null);
   };
 
   const handleAddEditTag = () => {

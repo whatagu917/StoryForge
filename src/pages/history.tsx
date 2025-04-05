@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { HistoryIcon, GitCompare, Clock, User, Wand2, RotateCcw, ArrowLeft, Copy, Edit, ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/router';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAuthHeader } from '@/lib/auth';
 
 interface Revision {
   id: string;
@@ -16,6 +18,7 @@ interface Revision {
 
 export default function History() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [selectedRevision, setSelectedRevision] = useState<Revision | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,49 +27,57 @@ export default function History() {
   const [compareMode, setCompareMode] = useState<'side-by-side' | 'unified'>('side-by-side');
   const [selectedRevisions, setSelectedRevisions] = useState<string[]>([]);
 
-  // Load revisions from localStorage
+  // Load revisions from API
   useEffect(() => {
-    try {
-      const savedRevisions = localStorage.getItem('storyforge-revisions');
-      if (savedRevisions) {
-        setRevisions(JSON.parse(savedRevisions));
+    const loadRevisions = async () => {
+      if (!isAuthenticated) {
+        router.push('/auth/login');
+        return;
       }
-      setIsLoading(false);
-    } catch (err) {
-      setError(err as Error);
-      setIsLoading(false);
-    }
-  }, []);
 
-  const handleRestore = (revision: Revision) => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/revisions', {
+          headers: {
+            ...getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load revisions');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data) {
+          setRevisions(data.data);
+        }
+        setIsLoading(false);
+      } catch (err) {
+        setError(err as Error);
+        setIsLoading(false);
+      }
+    };
+
+    loadRevisions();
+  }, [isAuthenticated, router]);
+
+  const handleRestore = async (revision: Revision) => {
     if (!window.confirm('Are you sure you want to restore this version?')) return;
 
     try {
-      // Load current stories
-      const savedStories = localStorage.getItem('storyforge-stories');
-      if (!savedStories) return;
-
-      const stories = JSON.parse(savedStories);
-      const updatedStories = stories.map((story: any) => {
-        if (story.id === revision.storyId) {
-          return {
-            ...story,
-            chapters: story.chapters.map((chapter: any) => {
-              if (chapter.id === revision.chapterId) {
-                return {
-                  ...chapter,
-                  content: revision.content
-                };
-              }
-              return chapter;
-            })
-          };
-        }
-        return story;
+      const response = await fetch(`/api/revisions/${revision.id}/restore`, {
+        method: 'POST',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
       });
 
-      // Save updated stories
-      localStorage.setItem('storyforge-stories', JSON.stringify(updatedStories));
+      if (!response.ok) {
+        throw new Error('Failed to restore revision');
+      }
+
       alert('Restoration completed');
     } catch (err) {
       console.error('Failed to restore:', err);
@@ -83,23 +94,56 @@ export default function History() {
     router.push(`/editor?story=${revision.storyId}&chapter=${revision.chapterId}`);
   };
 
-  const handleDeleteRevisions = () => {
+  const handleDeleteRevisions = async () => {
     if (selectedRevisions.length === 0) return;
     if (!window.confirm('Are you sure you want to delete the selected revisions?')) return;
 
-    const updatedRevisions = revisions.filter(revision => !selectedRevisions.includes(revision.id));
-    setRevisions(updatedRevisions);
-    localStorage.setItem('storyforge-revisions', JSON.stringify(updatedRevisions));
-    setSelectedRevisions([]);
+    try {
+      const response = await fetch('/api/revisions/batch', {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ revisionIds: selectedRevisions }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete revisions');
+      }
+
+      const updatedRevisions = revisions.filter(revision => !selectedRevisions.includes(revision.id));
+      setRevisions(updatedRevisions);
+      setSelectedRevisions([]);
+    } catch (err) {
+      console.error('Failed to delete revisions:', err);
+      alert('Failed to delete revisions');
+    }
   };
 
-  const handleDeleteAllRevisions = () => {
+  const handleDeleteAllRevisions = async () => {
     if (revisions.length === 0) return;
     if (!window.confirm('Are you sure you want to delete all revisions?')) return;
 
-    setRevisions([]);
-    localStorage.setItem('storyforge-revisions', JSON.stringify([]));
-    setSelectedRevisions([]);
+    try {
+      const response = await fetch('/api/revisions', {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete all revisions');
+      }
+
+      setRevisions([]);
+      setSelectedRevisions([]);
+    } catch (err) {
+      console.error('Failed to delete all revisions:', err);
+      alert('Failed to delete all revisions');
+    }
   };
 
   if (isLoading) {

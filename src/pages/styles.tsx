@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Wand2, Eye, Trash2, Plus, X, Edit2, Sparkles, Copy, ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/router';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAuthHeader } from '@/lib/auth';
 
 interface StyleProfile {
   id: string;
@@ -13,6 +16,8 @@ interface StyleProfile {
 }
 
 export default function Styles() {
+  const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [selectedStyle, setSelectedStyle] = useState<StyleProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -34,28 +39,52 @@ export default function Styles() {
   const [imitationResult, setImitationResult] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load styles from localStorage
+  // Load styles from API
   useEffect(() => {
-    const savedStyles = localStorage.getItem('storyforge-styles');
-    if (savedStyles) {
-      setStyles(JSON.parse(savedStyles));
-    }
-  }, []);
+    const loadStyles = async () => {
+      if (!isAuthenticated) {
+        router.push('/auth/login');
+        return;
+      }
 
-  // Save styles to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem('storyforge-styles', JSON.stringify(styles));
-  }, [styles]);
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/styles', {
+          headers: {
+            ...getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load styles');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data) {
+          setStyles(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to load styles:', err);
+        setError(err as Error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStyles();
+  }, [isAuthenticated, router]);
 
   const handleAddStyle = async () => {
     if (!newStyleName.trim() || !newStyleDescription.trim() || !newStyleSampleText.trim()) return;
 
     setIsGeneratingStyle(true);
     try {
-      // 文体プロファイルのembeddingを生成
-      const response = await fetch('/api/embed', {
+      // Generate embedding
+      const embedResponse = await fetch('/api/embed', {
         method: 'POST',
         headers: {
+          ...getAuthHeader(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -63,29 +92,41 @@ export default function Styles() {
         }),
       });
 
-      if (!response.ok) {
+      if (!embedResponse.ok) {
         throw new Error('Failed to generate embedding');
       }
 
-      const { embedding } = await response.json();
+      const { embedding } = await embedResponse.json();
 
-      const newStyle: StyleProfile = {
-        id: Date.now().toString(),
-        name: newStyleName,
-        description: newStyleDescription,
-        sampleText: newStyleSampleText,
-        strength: newStyleStrength,
-        embedding,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      // Create style profile
+      const response = await fetch('/api/styles', {
+        method: 'POST',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newStyleName,
+          description: newStyleDescription,
+          sampleText: newStyleSampleText,
+          strength: newStyleStrength,
+          embedding,
+        }),
+      });
 
-      setStyles([newStyle, ...styles]);
-      setNewStyleName('');
-      setNewStyleDescription('');
-      setNewStyleSampleText('');
-      setNewStyleStrength(0.5);
-      setIsNewStyleModalOpen(false);
+      if (!response.ok) {
+        throw new Error('Failed to create style profile');
+      }
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        setStyles([data.data, ...styles]);
+        setNewStyleName('');
+        setNewStyleDescription('');
+        setNewStyleSampleText('');
+        setNewStyleStrength(0.5);
+        setIsNewStyleModalOpen(false);
+      }
     } catch (error) {
       console.error('Failed to add style profile:', error);
       setError(error as Error);
@@ -108,10 +149,11 @@ export default function Styles() {
 
     setIsGeneratingStyle(true);
     try {
-      // 文体プロファイルのembeddingを再生成
-      const response = await fetch('/api/embed', {
+      // Generate new embedding
+      const embedResponse = await fetch('/api/embed', {
         method: 'POST',
         headers: {
+          ...getAuthHeader(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -119,28 +161,41 @@ export default function Styles() {
         }),
       });
 
-      if (!response.ok) {
+      if (!embedResponse.ok) {
         throw new Error('Failed to generate embedding');
       }
 
-      const { embedding } = await response.json();
+      const { embedding } = await embedResponse.json();
 
-      const updatedStyle = {
-        ...editingStyle,
-        name: editStyleName,
-        description: editStyleDescription,
-        sampleText: editStyleSampleText,
-        strength: editStyleStrength,
-        embedding,
-        updatedAt: new Date().toISOString(),
-      };
+      // Update style profile
+      const response = await fetch(`/api/styles/${editingStyle.id}`, {
+        method: 'PUT',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: editStyleName,
+          description: editStyleDescription,
+          sampleText: editStyleSampleText,
+          strength: editStyleStrength,
+          embedding,
+        }),
+      });
 
-      setStyles(prev => prev.map(s => s.id === editingStyle.id ? updatedStyle : s));
-      if (selectedStyle?.id === editingStyle.id) {
-        setSelectedStyle(updatedStyle);
+      if (!response.ok) {
+        throw new Error('Failed to update style profile');
       }
-      setIsEditStyleModalOpen(false);
-      setEditingStyle(null);
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        setStyles(prev => prev.map(s => s.id === editingStyle.id ? data.data : s));
+        if (selectedStyle?.id === editingStyle.id) {
+          setSelectedStyle(data.data);
+        }
+        setIsEditStyleModalOpen(false);
+        setEditingStyle(null);
+      }
     } catch (error) {
       console.error('Failed to update style profile:', error);
       setError(error as Error);
@@ -149,11 +204,29 @@ export default function Styles() {
     }
   };
 
-  const handleDeleteStyle = (styleId: string) => {
+  const handleDeleteStyle = async (styleId: string) => {
     if (!window.confirm('この文体プロファイルを削除してもよろしいですか？')) return;
-    setStyles(prev => prev.filter(style => style.id !== styleId));
-    if (selectedStyle?.id === styleId) {
-      setSelectedStyle(null);
+
+    try {
+      const response = await fetch(`/api/styles/${styleId}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete style profile');
+      }
+
+      setStyles(prev => prev.filter(style => style.id !== styleId));
+      if (selectedStyle?.id === styleId) {
+        setSelectedStyle(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete style profile:', err);
+      alert('Failed to delete style profile');
     }
   };
 

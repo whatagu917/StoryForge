@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { MessageSquare, Wand2, History, Settings, X, Save, Edit2, RotateCcw, Sparkles } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { getAuthHeader } from '@/lib/auth';
 
 interface StyleProfile {
   id: string;
@@ -51,6 +53,7 @@ interface ChapterHistory {
 }
 
 interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
 }
@@ -139,10 +142,10 @@ function NewChapterModal({ isOpen, onClose, onSave, currentChapterCount }: NewCh
 
 export default function Editor() {
   const router = useRouter();
-  const { id } = router.query;
+  const { user, isAuthenticated } = useAuth();
   const [stories, setStories] = useState<Story[]>([]);
   const [currentStory, setCurrentStory] = useState<Story | null>(null);
-  const [currentChapter, setCurrentChapter] = useState<Chapter>(EMPTY_CHAPTER);
+  const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
   const [isNewChapterModalOpen, setIsNewChapterModalOpen] = useState(false);
   const [isNewStoryModalOpen, setIsNewStoryModalOpen] = useState(false);
@@ -153,7 +156,7 @@ export default function Editor() {
   const [lastSavedState, setLastSavedState] = useState<Story | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isEditingStoryTitle, setIsEditingStoryTitle] = useState(false);
   const [editStoryTitle, setEditStoryTitle] = useState('');
   const [isChaptersVisible, setIsChaptersVisible] = useState(true);
@@ -161,98 +164,65 @@ export default function Editor() {
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [selectedStyleProfile, setSelectedStyleProfile] = useState<StyleProfile | null>(null);
   const [isStyleProfileModalOpen, setIsStyleProfileModalOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newStoryTitle, setNewStoryTitle] = useState('');
+  const [showNewStoryModal, setShowNewStoryModal] = useState(false);
 
-  // Load stories from localStorage when the component mounts
+  // ユーザーIDを含むローカルストレージのキーを生成
+  const getStorageKey = (baseKey: string) => {
+    return user ? `${baseKey}-${user.id}` : baseKey;
+  };
+
+  // ストーリーの読み込み
   useEffect(() => {
-    const savedStories = localStorage.getItem('storyforge-stories');
-    if (savedStories) {
-      try {
-        const parsedStories = JSON.parse(savedStories);
-        setStories(parsedStories);
-
-        // Set current story and chapter from localStorage
-        const savedCurrentStory = localStorage.getItem('storyforge-current-story');
-        const savedCurrentChapter = localStorage.getItem('storyforge-current-chapter');
-        
-        if (savedCurrentStory) {
-          const story = parsedStories.find((s: Story) => s.id === JSON.parse(savedCurrentStory).id);
-          if (story) {
-            setCurrentStory(story);
-            setLastSavedState(story);
-            
-            if (savedCurrentChapter) {
-              const chapter = story.chapters.find((c: Chapter) => c.id === JSON.parse(savedCurrentChapter).id);
-              if (chapter) {
-                // データの整合性を確保
-                const validChapter: Chapter = {
-                  id: chapter.id || '',
-                  title: chapter.title || '',
-                  content: chapter.content || '',
-                  number: typeof chapter.number === 'number' ? chapter.number : 0
-                };
-                setCurrentChapter(validChapter);
-                setLastSavedContent(validChapter.content);
-              } else {
-                // チャプターが見つからない場合はEMPTY_CHAPTERを使用
-                setCurrentChapter(EMPTY_CHAPTER);
-                setLastSavedContent('');
-              }
-            } else if (story.chapters.length > 0) {
-              const firstChapter = story.chapters[0];
-              const validChapter: Chapter = {
-                id: firstChapter.id || '',
-                title: firstChapter.title || '',
-                content: firstChapter.content || '',
-                number: typeof firstChapter.number === 'number' ? firstChapter.number : 0
-              };
-              setCurrentChapter(validChapter);
-              setLastSavedContent(validChapter.content);
-            } else {
-              // チャプターが存在しない場合はEMPTY_CHAPTERを使用
-              setCurrentChapter(EMPTY_CHAPTER);
-              setLastSavedContent('');
-            }
-          } else {
-            // ストーリーが見つからない場合は初期状態にリセット
-            setCurrentStory(null);
-            setCurrentChapter(EMPTY_CHAPTER);
-            setLastSavedContent('');
-          }
-        } else if (parsedStories.length > 0) {
-          const firstStory = parsedStories[0];
-          setCurrentStory(firstStory);
-          setLastSavedState(firstStory);
-          
-          if (firstStory.chapters.length > 0) {
-            const firstChapter = firstStory.chapters[0];
-            const validChapter: Chapter = {
-              id: firstChapter.id || '',
-              title: firstChapter.title || '',
-              content: firstChapter.content || '',
-              number: typeof firstChapter.number === 'number' ? firstChapter.number : 0
-            };
-            setCurrentChapter(validChapter);
-            setLastSavedContent(validChapter.content);
-          } else {
-            // チャプターが存在しない場合はEMPTY_CHAPTERを使用
-            setCurrentChapter(EMPTY_CHAPTER);
-            setLastSavedContent('');
-          }
-        } else {
-          // ストーリーが存在しない場合は初期状態にリセット
-          setCurrentStory(null);
-          setCurrentChapter(EMPTY_CHAPTER);
-          setLastSavedContent('');
-        }
-      } catch (error) {
-        console.error('Error parsing stories:', error);
-        // エラー時は初期状態にリセット
-        setCurrentStory(null);
-        setCurrentChapter(EMPTY_CHAPTER);
-        setLastSavedContent('');
+    const loadStories = async () => {
+      if (!isAuthenticated) {
+        router.push('/auth/login');
+        return;
       }
-    }
-  }, []);
+
+      setIsLoading(true);
+      try {
+        // APIからストーリーを取得
+        const response = await fetch('/api/stories', {
+          headers: {
+            ...getAuthHeader(),
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error('ストーリーの取得に失敗しました');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data) {
+          // APIから返されるデータには既にidプロパティが含まれているため、変換は不要
+          console.log('Loaded stories:', data.data);
+          setStories(data.data);
+          
+          // 最後に編集したストーリーがあれば、それを選択
+          const lastEditedStoryId = localStorage.getItem(getStorageKey('storyforge-last-edited-story'));
+          if (lastEditedStoryId) {
+            const lastEditedStory = data.data.find((story: Story) => story.id === lastEditedStoryId);
+            if (lastEditedStory) {
+              setCurrentStory(lastEditedStory);
+              if (lastEditedStory.chapters.length > 0) {
+                setCurrentChapter(lastEditedStory.chapters[0]);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load stories:', err);
+        setError('ストーリーの読み込みに失敗しました');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStories();
+  }, [isAuthenticated, router, user]);
 
   // Load styles from localStorage
   useEffect(() => {
@@ -288,24 +258,96 @@ export default function Editor() {
     }
   }, [lastSavedContent]);
 
-  const handleCreateStory = (title: string) => {
-    const newStory: Story = {
-      id: Date.now().toString(),
-      title,
-      chapters: []
-    };
-    setStories(prev => [...prev, newStory]);
-    setCurrentStory(newStory);
+  const handleCreateStory = async (title: string) => {
+    if (!user) return;
+
+    setIsSaving(true);
+    try {
+      // APIを使用してストーリーを作成
+      const response = await fetch('/api/stories', {
+        method: 'POST',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          content: '',
+          chapters: [],
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.details || data.message || 'ストーリーの作成に失敗しました');
+      }
+
+      const data = await response.json();
+      if (data.success && data.data) {
+        const newStory = data.data;
+        setStories(prev => [...prev, newStory]);
+        setCurrentStory(newStory);
+        localStorage.setItem(getStorageKey('storyforge-last-edited-story'), newStory.id);
+        setIsNewStoryModalOpen(false);
+      }
+    } catch (err) {
+      console.error('Failed to create story:', err);
+      alert(err instanceof Error ? err.message : 'ストーリーの作成に失敗しました');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteStory = (storyId: string) => {
+  const handleDeleteStory = async (storyId: string) => {
+    if (!user) return;
+    if (!storyId) {
+      console.error('Cannot delete story: storyId is undefined');
+      alert('ストーリーIDが見つかりません。削除できません。');
+      return;
+    }
     if (!window.confirm('この物語を削除してもよろしいですか？')) return;
     
-    setStories(prev => prev.filter(story => story.id !== storyId));
-    if (currentStory?.id === storyId) {
-      const nextStory = stories.find(story => story.id !== storyId);
-      setCurrentStory(nextStory || null);
-      setLastSavedState(nextStory || null);
+    setIsSaving(true);
+    try {
+      console.log('Deleting story with ID:', storyId);
+      // APIを使用してストーリーを削除
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Delete story error response:', errorData);
+        throw new Error(errorData.message || 'ストーリーの削除に失敗しました');
+      }
+
+      const data = await response.json();
+      console.log('Delete story response:', data);
+      
+      if (data.success) {
+        setStories(prev => prev.filter(story => story.id !== storyId));
+        if (currentStory?.id === storyId) {
+          const nextStory = stories.find(story => story.id !== storyId);
+          setCurrentStory(nextStory || null);
+          setLastSavedState(nextStory || null);
+          if (nextStory) {
+            localStorage.setItem(getStorageKey('storyforge-last-edited-story'), nextStory.id);
+          } else {
+            localStorage.removeItem(getStorageKey('storyforge-last-edited-story'));
+          }
+        }
+      } else {
+        throw new Error(data.message || 'ストーリーの削除に失敗しました');
+      }
+    } catch (err) {
+      console.error('Failed to delete story:', err);
+      alert(err instanceof Error ? err.message : 'ストーリーの削除に失敗しました');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -344,9 +386,9 @@ export default function Editor() {
       chapterNumber: chapter.number
     };
 
-    const savedRevisions = localStorage.getItem('storyforge-revisions');
+    const savedRevisions = localStorage.getItem(getStorageKey('storyforge-revisions'));
     const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
-    localStorage.setItem('storyforge-revisions', JSON.stringify([revision, ...revisions]));
+    localStorage.setItem(getStorageKey('storyforge-revisions'), JSON.stringify([revision, ...revisions]));
   };
 
   const handleUpdateChapter = (chapterId: string, updates: Partial<Chapter>) => {
@@ -372,59 +414,69 @@ export default function Editor() {
     }
   };
 
-  const handleSave = () => {
-    if (!currentStory || !currentChapter) return;
+  const handleSave = async () => {
+    if (!currentStory || !currentChapter || !user) return;
 
     setIsSaving(true);
     try {
-      // Save current content to last-content
-      setLastSavedContent(currentChapter.content);
-      localStorage.setItem('storyforge-last-content', currentChapter.content);
-
-      // Update the chapter content in the story
-      const updatedStories = stories.map(story => {
-        if (story.id === currentStory.id) {
-          return {
-            ...story,
-            chapters: story.chapters.map(chapter => {
-              if (chapter.id === currentChapter.id) {
-                return {
-                  ...chapter,
-                  content: currentChapter.content
-                };
-              }
-              return chapter;
-            })
-          };
-        }
-        return story;
+      // APIを使用してストーリーを更新
+      const response = await fetch(`/api/stories/${currentStory.id}`, {
+        method: 'PUT',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...currentStory,
+          chapters: currentStory.chapters.map(chapter => {
+            if (chapter.id === currentChapter.id) {
+              return {
+                ...chapter,
+                content: currentChapter.content
+              };
+            }
+            return chapter;
+          }),
+        }),
       });
 
-      // Save updated stories
-      localStorage.setItem('storyforge-stories', JSON.stringify(updatedStories));
-      setStories(updatedStories);
+      if (!response.ok) {
+        throw new Error('ストーリーの保存に失敗しました');
+      }
 
-      // Save revision
-      const revision: Revision = {
-        id: Date.now().toString(),
-        chapterId: currentChapter.id,
-        storyId: currentStory.id,
-        type: 'manual',
-        timestamp: new Date().toLocaleString('ja-JP'),
-        content: currentChapter.content,
-        previousContent: lastSavedContent || '',
-        chapterTitle: currentChapter.title,
-        chapterNumber: currentChapter.number
-      };
+      const data = await response.json();
+      if (data.success && data.data) {
+        // Save current content to last-content
+        setLastSavedContent(currentChapter.content);
+        localStorage.setItem(getStorageKey('storyforge-last-content'), currentChapter.content);
 
-      const savedRevisions = localStorage.getItem('storyforge-revisions');
-      const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
-      localStorage.setItem('storyforge-revisions', JSON.stringify([revision, ...revisions]));
+        // Update the stories state
+        setStories(prev => prev.map(story => 
+          story.id === currentStory.id ? data.data : story
+        ));
 
-      alert('Changes saved successfully');
+        // Save revision
+        const revision: Revision = {
+          id: Date.now().toString(),
+          chapterId: currentChapter.id,
+          storyId: currentStory.id,
+          type: 'manual',
+          timestamp: new Date().toLocaleString('ja-JP'),
+          content: currentChapter.content,
+          previousContent: lastSavedContent || '',
+          chapterTitle: currentChapter.title,
+          chapterNumber: currentChapter.number
+        };
+
+        const savedRevisions = localStorage.getItem(getStorageKey('storyforge-revisions'));
+        const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
+        localStorage.setItem(getStorageKey('storyforge-revisions'), JSON.stringify([revision, ...revisions]));
+
+        alert('変更が保存されました');
+      }
     } catch (err) {
       console.error('Failed to save:', err);
-      alert('Failed to save changes');
+      alert('変更の保存に失敗しました');
     } finally {
       setIsSaving(false);
     }
@@ -475,9 +527,9 @@ export default function Editor() {
         chapterNumber: currentChapter.number
       };
 
-      const savedRevisions = localStorage.getItem('storyforge-revisions');
+      const savedRevisions = localStorage.getItem(getStorageKey('storyforge-revisions'));
       const revisions = savedRevisions ? JSON.parse(savedRevisions) : [];
-      localStorage.setItem('storyforge-revisions', JSON.stringify([revision, ...revisions]));
+      localStorage.setItem(getStorageKey('storyforge-revisions'), JSON.stringify([revision, ...revisions]));
     }
   };
 
@@ -543,6 +595,7 @@ export default function Editor() {
     if (!inputMessage.trim() || !currentChapter) return;
 
     const userMessage: Message = {
+      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       role: 'user',
       content: inputMessage,
     };
@@ -552,62 +605,37 @@ export default function Editor() {
     setIsLoading(true);
 
     try {
-      const currentContent = currentStory?.chapters.find(c => c.id === currentChapter.id)?.content || '';
-      
-      // 文体プロファイルが選択されている場合、文体模倣APIを使用
-      if (selectedStyleProfile) {
-        const response = await fetch('/api/imitate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: inputMessage,
-            styleId: selectedStyleProfile.id,
-            strength: selectedStyleProfile.strength,
-            styleProfile: selectedStyleProfile,
-          }),
-        });
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: inputMessage,
+          chapterId: currentChapter.id,
+          storyId: currentStory?.id,
+        }),
+      });
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'API request failed');
-        }
-
-        const { result } = await response.json();
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: result,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        // 通常のチャットAPIを使用
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            currentContent,
-            message: inputMessage,
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'API request failed');
-        }
-
-        const data = await response.json();
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: data.content,
-        };
-        setMessages(prev => [...prev, assistantMessage]);
+      if (!response.ok) {
+        throw new Error('Failed to get AI response');
       }
+
+      const { result } = await response.json();
+      const assistantMessage: Message = {
+        id: `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: result,
+      };
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('AIとの通信に失敗しました:', error);
-      alert('AIとの通信に失敗しました。');
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: `error-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        role: 'assistant',
+        content: '申し訳ありません。エラーが発生しました。もう一度お試しください。',
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -720,16 +748,14 @@ export default function Editor() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleStartEditStoryTitle();
-                        }}
-                        className="p-1 hover:bg-gray-200 rounded"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteStory(story.id);
+                          console.log('Story object:', story);
+                          if (story.id) {
+                            console.log('Deleting story with ID:', story.id);
+                            handleDeleteStory(story.id);
+                          } else {
+                            console.error('Story ID is missing:', story);
+                            alert('ストーリーIDが見つかりません。削除できません。');
+                          }
                         }}
                         className="p-1 hover:bg-gray-200 rounded text-red-600"
                       >
@@ -831,7 +857,7 @@ export default function Editor() {
 
       {/* Main content - Editor */}
       <div className="flex-1 bg-white rounded-lg shadow-sm p-4 relative">
-        {currentChapter.id !== EMPTY_CHAPTER.id && currentStory ? (
+        {currentChapter && currentStory ? (
           <>
             <div className="mb-4">
               <input
@@ -923,9 +949,9 @@ export default function Editor() {
         )}
         
         <div className="space-y-4 mb-4">
-          {messages.map((message, index) => (
+          {messages.map((message) => (
             <div
-              key={index}
+              key={message.id}
               className={`p-3 rounded-lg ${
                 message.role === 'user'
                   ? 'bg-blue-50 text-blue-800 ml-8'
@@ -989,7 +1015,6 @@ export default function Editor() {
             const formData = new FormData(e.currentTarget);
             const title = formData.get('title') as string;
             handleCreateStory(title);
-            setIsNewStoryModalOpen(false);
           }}>
             <div className="space-y-4">
               <div>
@@ -1016,8 +1041,9 @@ export default function Editor() {
                 <button
                   type="submit"
                   className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-md"
+                  disabled={isSaving}
                 >
-                  Create Story
+                  {isSaving ? 'Creating...' : 'Create Story'}
                 </button>
               </div>
             </div>
