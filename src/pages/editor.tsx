@@ -1119,7 +1119,12 @@ export default function Editor() {
                         ) : (
                           <div className="flex items-center justify-between">
                             <button
-                              onClick={() => setCurrentChapter(chapter)}
+                              onClick={() => {
+                                setCurrentStory(story);
+                                setCurrentChapter(chapter);
+                                console.log('Selected chapter:', chapter);
+                                console.log('Current story:', story);
+                              }}
                               className="flex-1 text-left"
                             >
                               Chapter {chapter.number}: {chapter.title}
@@ -1218,8 +1223,13 @@ export default function Editor() {
               className="p-1 hover:bg-gray-100 rounded" 
               title="AI Rewrite"
               onClick={() => {
-                if (!currentChapter) return;
-                const currentContent = currentStory?.chapters.find(c => c.id === currentChapter.id)?.content || '';
+                if (!currentStory || !currentChapter) {
+                  console.error('No story or chapter selected');
+                  return;
+                }
+                console.log('Current Story:', currentStory);
+                console.log('Current Chapter:', currentChapter);
+                const currentContent = currentChapter.content || '';
                 setInputMessage(`以下の文章を改善してください：\n\n${currentContent}`);
               }}
             >
