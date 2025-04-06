@@ -1,91 +1,101 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getAuthHeader } from '@/lib/auth';
+import { withAuth, AuthUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const authHeader = getAuthHeader(req);
-  if (!authHeader) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
+async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  user: AuthUser
+) {
+  console.log('Revisions API called with method:', req.method);
 
-  const userId = authHeader.userId;
+  try {
+    const userId = user.id;
+    console.log('User ID from auth:', userId);
 
-  if (req.method === 'GET') {
-    try {
-      const revisions = await prisma.revision.findMany({
-        where: {
-          userId,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
-
-      return res.status(200).json({ success: true, data: revisions || [] });
-    } catch (error) {
-      console.error('Failed to fetch revisions:', error);
-      return res.status(500).json({ success: false, message: 'Internal server error' });
+    if (req.method === 'GET') {
+      console.log('Fetching revisions for user:', userId);
+      try {
+        const revisions = await prisma.revision.findMany({
+          where: { userId: userId },
+          orderBy: { updatedAt: 'desc' },
+        });
+        console.log(`Found ${revisions.length} revisions for user`);
+        return res.status(200).json(revisions);
+      } catch (dbError: any) {
+        console.error('Database error when fetching revisions:', {
+          error: dbError.message,
+          stack: dbError.stack,
+          code: dbError.code
+        });
+        return res.status(500).json({
+          message: process.env.NODE_ENV === 'development'
+            ? `Failed to fetch revisions: ${dbError.message}`
+            : 'Failed to fetch revisions'
+        });
+      }
     }
-  }
 
-  if (req.method === 'POST') {
-    try {
+    if (req.method === 'POST') {
+      console.log('Creating new revision for user:', userId);
       const { content, previousContent, chapterId, storyId, type, chapterTitle, chapterNumber } = req.body;
 
-      if (!userId) {
-        return res.status(401).json({ success: false, message: 'User ID not found' });
+      if (!content || !previousContent || !chapterId || !storyId || !type || !chapterTitle || typeof chapterNumber !== 'number') {
+        console.log('Missing required fields:', {
+          content: !!content,
+          previousContent: !!previousContent,
+          chapterId: !!chapterId,
+          storyId: !!storyId,
+          type: !!type,
+          chapterTitle: !!chapterTitle,
+          chapterNumber: typeof chapterNumber === 'number'
+        });
+        return res.status(400).json({ message: 'All fields are required' });
       }
 
-      console.log('Creating revision with data:', {
-        content,
-        previousContent,
-        chapterId,
-        storyId,
-        type,
-        chapterTitle,
-        chapterNumber,
-        userId,
-      });
-
-      const revision = await prisma.revision.create({
-        data: {
-          content,
-          previousContent,
-          chapterId,
-          storyId,
-          type,
-          chapterTitle,
-          chapterNumber,
-          userId,
-        },
-      });
-
-      return res.status(201).json({ success: true, data: revision });
-    } catch (error) {
-      console.error('Failed to create revision:', error);
-      if (error instanceof Error) {
-        console.error('Error name:', error.name);
-        console.error('Error message:', error.message);
-        console.error('Error stack:', error.stack);
+      try {
+        const revision = await prisma.revision.create({
+          data: {
+            content,
+            previousContent,
+            chapterId,
+            storyId,
+            type,
+            chapterTitle,
+            chapterNumber,
+            userId,
+          },
+        });
+        console.log('Created new revision:', revision.id);
+        return res.status(201).json(revision);
+      } catch (dbError: any) {
+        console.error('Database error when creating revision:', {
+          error: dbError.message,
+          stack: dbError.stack,
+          code: dbError.code
+        });
+        return res.status(500).json({
+          message: process.env.NODE_ENV === 'development'
+            ? `Failed to create revision: ${dbError.message}`
+            : 'Failed to create revision'
+        });
       }
-      return res.status(500).json({ success: false, message: 'Internal server error', error: error instanceof Error ? error.message : String(error) });
     }
+
+    console.log('Method not allowed:', req.method);
+    return res.status(405).json({ message: 'Method not allowed' });
+  } catch (error: any) {
+    console.error('Unexpected error in revisions API:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    return res.status(500).json({
+      message: process.env.NODE_ENV === 'development'
+        ? `Internal server error: ${error.message}`
+        : 'Internal server error'
+    });
   }
+}
 
-  if (req.method === 'DELETE') {
-    try {
-      await prisma.revision.deleteMany({
-        where: {
-          userId,
-        },
-      });
-
-      return res.status(200).json({ success: true });
-    } catch (error) {
-      console.error('Failed to delete revisions:', error);
-      return res.status(500).json({ success: false, message: 'Internal server error' });
-    }
-  }
-
-  return res.status(405).json({ success: false, message: 'Method not allowed' });
-} 
+export default withAuth(handler); 

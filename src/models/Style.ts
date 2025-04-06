@@ -1,6 +1,22 @@
 import mongoose from 'mongoose';
 
-const styleSchema = new mongoose.Schema({
+// スタイルのインターフェース定義
+export interface IStyle {
+  name: string;
+  description: string;
+  settings: {
+    embedding?: number[] | string;
+    sampleText?: string;
+    strength?: number;
+    [key: string]: any;
+  };
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Mongooseスキーマの定義
+const styleSchema = new mongoose.Schema<IStyle>({
   name: {
     type: String,
     required: [true, 'スタイル名は必須です'],
@@ -14,16 +30,18 @@ const styleSchema = new mongoose.Schema({
   settings: {
     type: mongoose.Schema.Types.Mixed,
     required: [true, '設定は必須です'],
+    default: {},
   },
   userId: {
     type: String,
     required: [true, 'ユーザーIDは必須です'],
-  },
+  }
 }, {
   timestamps: true,
 });
 
-// モデルが既に存在する場合はそれを返し、存在しない場合は新しく作成
-const Style = mongoose.models.Style || mongoose.model('Style', styleSchema);
+// インデックスの追加
+styleSchema.index({ userId: 1, createdAt: -1 });
 
-export default Style; 
+// モデルのエクスポート
+export default mongoose.models.Style || mongoose.model<IStyle>('Style', styleSchema);
