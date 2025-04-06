@@ -1,3 +1,5 @@
+const path = require('path');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
@@ -7,6 +9,13 @@ const nextConfig = {
   serverRuntimeConfig: {
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     JWT_SECRET: process.env.JWT_SECRET,
+  },
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': path.resolve(__dirname, 'src'),
+    };
+    return config;
   },
 }
 
