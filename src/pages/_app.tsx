@@ -3,18 +3,8 @@ import type { AppProps } from 'next/app'
 import Layout from '../components/layout'
 import { AuthProvider } from '../contexts/AuthContext'
 import AuthGuard from '../components/AuthGuard'
-import { useRouter } from 'next/router'
-import { useEffect } from 'react'
 
 function AppContent({ Component, pageProps }: AppProps) {
-  const router = useRouter()
-
-  useEffect(() => {
-    if (router.pathname === '/') {
-      router.replace('/auth/login')
-    }
-  }, [router])
-
   return (
     <AuthProvider>
       <AuthGuard>

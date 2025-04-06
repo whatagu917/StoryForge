@@ -1,12 +1,14 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Model, CallbackWithoutResultAndOptionalError, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
 export interface IUser extends Document {
+  _id: Types.ObjectId;
   email: string;
   password: string;
   username: string;
   createdAt: Date;
   updatedAt: Date;
+  isModified(path: string): boolean;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -33,7 +35,7 @@ const UserSchema = new Schema({
 });
 
 // パスワードのハッシュ化
-UserSchema.pre('save', async function(next) {
+UserSchema.pre('save', async function(this: IUser, next: CallbackWithoutResultAndOptionalError) {
   if (!this.isModified('password')) return next();
   
   try {
@@ -46,12 +48,15 @@ UserSchema.pre('save', async function(next) {
 });
 
 // パスワードの比較メソッド
-UserSchema.methods.comparePassword = async function(candidatePassword: string): Promise<boolean> {
+UserSchema.methods.comparePassword = async function(this: IUser, candidatePassword: string): Promise<boolean> {
   try {
     return await bcrypt.compare(candidatePassword, this.password);
   } catch (error) {
-    return false;
+    throw error;
   }
 };
 
-export default mongoose.models.User || mongoose.model<IUser>('User', UserSchema); 
+// モデルが既に存在する場合はそれを返し、存在しない場合は新しく作成
+const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);
+
+export default User; 

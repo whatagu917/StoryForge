@@ -101,8 +101,21 @@ export function getAuthHeader(req?: NextApiRequest): { Authorization: string; us
   } else {
     // Client-side
     if (typeof window === 'undefined') return null;
-    const token = localStorage.getItem('token');
-    if (!token) return null;
-    return { Authorization: `Bearer ${token}` };
+    
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.warn('No token found in localStorage');
+        return null;
+      }
+
+      // トークンの存在のみを確認し、検証は行わない
+      return { 
+        Authorization: `Bearer ${token}`
+      };
+    } catch (error) {
+      console.error('Error in getAuthHeader:', error);
+      return null;
+    }
   }
 } 

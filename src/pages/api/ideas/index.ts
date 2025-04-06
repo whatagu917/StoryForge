@@ -30,14 +30,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'POST') {
     try {
-      const { title, description, tags, aiGenerated } = req.body;
+      const { title, description, tags = [], aiGenerated = false } = req.body;
 
+      // Validate required fields
+      if (!title || !description) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'タイトルと説明は必須です' 
+        });
+      }
+
+      // Use userId from auth header instead of request body
       const idea = await prisma.idea.create({
         data: {
           title,
           description,
-          tags,
-          aiGenerated,
+          tags: tags || [],
+          aiGenerated: aiGenerated || false,
           userId,
         },
       });
@@ -45,9 +54,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(201).json({ success: true, data: idea });
     } catch (error) {
       console.error('Failed to create idea:', error);
-      return res.status(500).json({ success: false, message: 'Internal server error' });
+      return res.status(500).json({ 
+        success: false, 
+        message: 'アイデアの作成に失敗しました',
+        error: error instanceof Error ? error.message : '不明なエラー'
+      });
     }
   }
 
-  return res.status(405).json({ success: false, message: 'Method not allowed' });
+  res.setHeader('Allow', ['GET', 'POST']);
+  return res.status(405).json({ success: false, message: `Method ${req.method} Not Allowed` });
 } 

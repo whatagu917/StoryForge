@@ -41,7 +41,8 @@ export default function Styles() {
   const [imitationText, setImitationText] = useState('');
   const [imitationResult, setImitationResult] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showCreateForm, setShowCreateForm] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showImitationForm, setShowImitationForm] = useState(false);
 
   // Load styles from API
   useEffect(() => {
@@ -264,6 +265,12 @@ export default function Styles() {
           styleId: selectedStyle.id,
           text: imitationText,
           strength: selectedStyle.settings.strength,
+          styleProfile: {
+            name: selectedStyle.name,
+            description: selectedStyle.description,
+            sampleText: selectedStyle.settings.sampleText
+          },
+          clearHistory: false
         }),
       });
 
@@ -276,6 +283,44 @@ export default function Styles() {
     } catch (error) {
       console.error('Failed to imitate style:', error);
       setError('文体模倣に失敗しました');
+    } finally {
+      setIsImitatingStyle(false);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!selectedStyle || !imitationText.trim()) return;
+
+    setIsImitatingStyle(true);
+    try {
+      // チャット履歴をクリアするAPI呼び出し
+      const response = await fetch('/api/imitate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          styleId: selectedStyle.id,
+          text: imitationText,
+          strength: selectedStyle.settings.strength,
+          styleProfile: {
+            name: selectedStyle.name,
+            description: selectedStyle.description,
+            sampleText: selectedStyle.settings.sampleText
+          },
+          clearHistory: true
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear history');
+      }
+
+      const { result } = await response.json();
+      setImitationResult(result);
+    } catch (error) {
+      console.error('Failed to clear history:', error);
+      setError('チャット履歴のクリアに失敗しました');
     } finally {
       setIsImitatingStyle(false);
     }
@@ -422,9 +467,151 @@ export default function Styles() {
                 {style.settings.sampleText}
               </div>
             </div>
+            <div className="mt-4 flex space-x-2">
+              <button
+                onClick={() => handleEditStyle(style)}
+                className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700"
+              >
+                編集する
+              </button>
+            </div>
           </div>
         ))}
       </div>
+
+      {/* 編集モーダル */}
+      <EditStyleModal
+        isOpen={isEditStyleModalOpen}
+        onClose={() => setIsEditStyleModalOpen(false)}
+        style={editingStyle}
+        name={editStyleName}
+        setName={setEditStyleName}
+        description={editStyleDescription}
+        setDescription={setEditStyleDescription}
+        sampleText={editStyleSampleText}
+        setSampleText={setEditStyleSampleText}
+        strength={editStyleStrength}
+        setStrength={setEditStyleStrength}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
-} 
+}
+
+// 編集モーダルコンポーネント
+interface EditStyleModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  style: StyleProfile | null;
+  name: string;
+  setName: (name: string) => void;
+  description: string;
+  setDescription: (description: string) => void;
+  sampleText: string;
+  setSampleText: (sampleText: string) => void;
+  strength: number;
+  setStrength: (strength: number) => void;
+  onSave: () => void;
+}
+
+const EditStyleModal = ({ 
+  isOpen, 
+  onClose, 
+  style, 
+  name, 
+  setName, 
+  description, 
+  setDescription, 
+  sampleText, 
+  setSampleText, 
+  strength, 
+  setStrength, 
+  onSave 
+}: EditStyleModalProps) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">スタイルプロファイルを編集</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="editStyleName" className="block text-sm font-medium text-gray-700 mb-1">
+              スタイル名
+            </label>
+            <input
+              type="text"
+              id="editStyleName"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="editStyleDescription" className="block text-sm font-medium text-gray-700 mb-1">
+              説明
+            </label>
+            <textarea
+              id="editStyleDescription"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="editStyleSampleText" className="block text-sm font-medium text-gray-700 mb-1">
+              サンプルテキスト
+            </label>
+            <textarea
+              id="editStyleSampleText"
+              value={sampleText}
+              onChange={(e) => setSampleText(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={5}
+            />
+          </div>
+          
+          <div>
+            <label htmlFor="editStyleStrength" className="block text-sm font-medium text-gray-700 mb-1">
+              強度: {Math.round(strength * 100)}%
+            </label>
+            <input
+              type="range"
+              id="editStyleStrength"
+              min="0"
+              max="1"
+              step="0.01"
+              value={strength}
+              onChange={(e) => setStrength(parseFloat(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            />
+          </div>
+          
+          <div className="flex justify-end space-x-2 mt-4">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={onSave}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}; 

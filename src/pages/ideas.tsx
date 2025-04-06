@@ -48,7 +48,7 @@ interface Story {
 
 export default function Ideas() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -106,8 +106,10 @@ export default function Ideas() {
       }
     };
 
-    loadIdeas();
-  }, [isAuthenticated, router]);
+    if (!authLoading) {
+      loadIdeas();
+    }
+  }, [isAuthenticated, authLoading, router]);
 
   // Load stories from localStorage
   useEffect(() => {
@@ -122,26 +124,83 @@ export default function Ideas() {
     localStorage.setItem('storyforge-ideas', JSON.stringify(ideas));
   }, [ideas]);
 
+  // Add loading state check
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
+
+  // Add authentication check
+  if (!isAuthenticated || !user) {
+    router.push('/auth/login');
+    return null;
+  }
+
   const handleAddIdea = async () => {
     if (!newIdeaTitle.trim() || !newIdeaDescription.trim()) return;
+    
+    if (authLoading) {
+      alert('認証情報を読み込み中です。しばらくお待ちください。');
+      return;
+    }
+    
+    if (!isAuthenticated || !user || !user.id) {
+      console.error('認証エラー:', {
+        isAuthenticated,
+        user: user ? {
+          id: user.id,
+          email: user.email,
+          username: user.username
+        } : null,
+        authLoading
+      });
+      alert('認証情報が見つかりません。再度ログインしてください。');
+      router.push('/auth/login');
+      return;
+    }
 
     try {
+      const requestBody: {
+        title: string;
+        description: string;
+        tags: string[];
+        aiGenerated: boolean;
+        userId: string;
+      } = {
+        title: newIdeaTitle,
+        description: newIdeaDescription,
+        tags: newIdeaTags,
+        aiGenerated: false,
+        userId: user.id,
+      };
+      
+      console.log('リクエスト送信:', {
+        url: '/api/ideas',
+        method: 'POST',
+        body: requestBody
+      });
+      
+      const authHeader = getAuthHeader();
+      if (!authHeader) {
+        throw new Error('認証ヘッダーが取得できません');
+      }
+      
       const response = await fetch('/api/ideas', {
         method: 'POST',
         headers: {
-          ...getAuthHeader(),
+          ...authHeader,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          title: newIdeaTitle,
-          description: newIdeaDescription,
-          tags: newIdeaTags,
-          aiGenerated: false,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create idea');
+        const errorData = await response.json();
+        console.error('サーバーエラー:', errorData);
+        throw new Error(`アイデアの作成に失敗しました: ${errorData.message || '不明なエラー'}`);
       }
 
       const data = await response.json();
@@ -153,8 +212,8 @@ export default function Ideas() {
         setIsNewIdeaModalOpen(false);
       }
     } catch (err) {
-      console.error('Failed to create idea:', err);
-      alert('Failed to create idea');
+      console.error('アイデア作成エラー:', err);
+      alert(err instanceof Error ? err.message : 'アイデアの作成に失敗しました');
     }
   };
 

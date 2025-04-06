@@ -45,9 +45,16 @@ export default async function handler(
     // パスワードを除外してレスポンスを返す
     const { password: _, ...userWithoutPassword } = user.toObject();
 
+    // ユーザー情報にidフィールドを追加
+    const userResponse = {
+      id: user._id.toString(),
+      email: userWithoutPassword.email,
+      username: userWithoutPassword.username,
+    };
+
     res.status(200).json({
       message: 'ログインに成功しました',
-      user: userWithoutPassword,
+      user: userResponse,
       token,
     });
   } catch (error: any) {

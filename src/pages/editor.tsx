@@ -169,6 +169,13 @@ export default function Editor() {
   const [error, setError] = useState<string | null>(null);
   const [newStoryTitle, setNewStoryTitle] = useState('');
   const [showNewStoryModal, setShowNewStoryModal] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [chatHistory, setChatHistory] = useState<Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+  }>>([]);
 
   // ユーザーIDを含むローカルストレージのキーを生成
   const getStorageKey = (baseKey: string) => {
@@ -215,16 +222,31 @@ export default function Editor() {
   // 修正したチャプターIDをサーバーに保存する関数
   const saveFixedChapterIds = async (story: Story) => {
     try {
+      // 認証ヘッダーを取得
+      const authHeader = getAuthHeader();
+      if (!authHeader) {
+        console.error('認証ヘッダーが取得できません');
+        setError('認証に失敗しました。再度ログインしてください。');
+        router.push('/auth/login');
+        return false;
+      }
+
       const response = await fetch(`/api/stories/${story.id}`, {
         method: 'PUT',
         headers: {
-          ...getAuthHeader(),
+          ...authHeader,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(story),
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          console.error('認証エラー: セッションが期限切れです');
+          setError('セッションが期限切れです。再度ログインしてください。');
+          router.push('/auth/login');
+          return false;
+        }
         throw new Error('チャプターIDの修正に失敗しました');
       }
 
@@ -250,15 +272,30 @@ export default function Editor() {
 
       setIsLoading(true);
       try {
+        // 認証ヘッダーを取得
+        const authHeader = getAuthHeader();
+        if (!authHeader) {
+          console.error('認証ヘッダーが取得できません');
+          setError('認証に失敗しました。再度ログインしてください。');
+          router.push('/auth/login');
+          return;
+        }
+
         // APIからストーリーを取得
         const response = await fetch('/api/stories', {
           headers: {
-            ...getAuthHeader(),
+            ...authHeader,
             'Content-Type': 'application/json',
           },
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            console.error('認証エラー: セッションが期限切れです');
+            setError('セッションが期限切れです。再度ログインしてください。');
+            router.push('/auth/login');
+            return;
+          }
           throw new Error('ストーリーの取得に失敗しました');
         }
 
@@ -307,14 +344,29 @@ export default function Editor() {
 
       setIsLoading(true);
       try {
+        // 認証ヘッダーを取得
+        const authHeader = getAuthHeader();
+        if (!authHeader) {
+          console.error('認証ヘッダーが取得できません');
+          setError('認証に失敗しました。再度ログインしてください。');
+          router.push('/auth/login');
+          return;
+        }
+
         const response = await fetch('/api/styles', {
           headers: {
-            ...getAuthHeader(),
+            ...authHeader,
             'Content-Type': 'application/json',
           },
         });
 
         if (!response.ok) {
+          if (response.status === 401) {
+            console.error('認証エラー: セッションが期限切れです');
+            setError('セッションが期限切れです。再度ログインしてください。');
+            router.push('/auth/login');
+            return;
+          }
           throw new Error('Failed to load styles');
         }
 
@@ -727,11 +779,11 @@ export default function Editor() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || isLoading) return;
 
-    const userMessage: Message = {
-      id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      role: 'user',
+    const userMessage = {
+      id: Date.now().toString(),
+      role: 'user' as const,
       content: inputMessage,
     };
 
@@ -740,6 +792,34 @@ export default function Editor() {
     setIsLoading(true);
 
     try {
+      // 認証ヘッダーを取得
+      const authHeader = getAuthHeader();
+      if (!authHeader) {
+        console.error('認証ヘッダーが取得できません');
+        setError('認証に失敗しました。再度ログインしてください。');
+        // ログインページにリダイレクト
+        router.push('/auth/login');
+        return;
+      }
+
+      // チャットメッセージを履歴に保存（エラーは無視）
+      try {
+        await fetch('/api/chat/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            role: 'user',
+            content: inputMessage,
+          }),
+        });
+      } catch (error) {
+        console.warn('Failed to save chat history:', error);
+        // チャット履歴の保存に失敗しても処理を続行
+      }
+
       // メッセージ配列を作成（IDを除外）
       const messageHistory = [...messages, userMessage].map(({ role, content }) => ({
         role,
@@ -751,19 +831,28 @@ export default function Editor() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeader(),
+          ...authHeader,
         },
         body: JSON.stringify({
           messages: messageHistory,
           styleProfile: selectedStyleProfile ? {
+            name: selectedStyleProfile.name,
+            description: selectedStyleProfile.description,
             sampleText: selectedStyleProfile.settings.sampleText,
             strength: selectedStyleProfile.settings.strength,
-            embedding: selectedStyleProfile.settings.embedding
+            embedding: selectedStyleProfile.settings.embedding,
+            settings: selectedStyleProfile.settings
           } : null
         }),
       });
 
       if (!response.ok) {
+        if (response.status === 401) {
+          console.error('認証エラー: セッションが期限切れです');
+          setError('セッションが期限切れです。再度ログインしてください。');
+          router.push('/auth/login');
+          return;
+        }
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to get AI response');
       }
@@ -774,16 +863,34 @@ export default function Editor() {
         throw new Error(data.message || 'Failed to get AI response');
       }
 
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        role: 'assistant',
+      const assistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant' as const,
         content: data.message,
       };
 
+      // AIの応答を履歴に保存（エラーは無視）
+      try {
+        await fetch('/api/chat/history', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            role: 'assistant',
+            content: data.message,
+          }),
+        });
+      } catch (error) {
+        console.warn('Failed to save assistant response to history:', error);
+        // チャット履歴の保存に失敗しても処理を続行
+      }
+
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      console.error('Error sending message:', error);
-      alert('メッセージの送信に失敗しました。もう一度お試しください。');
+      console.error('Failed to send message:', error);
+      setError('メッセージの送信に失敗しました');
     } finally {
       setIsLoading(false);
     }
@@ -826,6 +933,58 @@ export default function Editor() {
       }
     }
   };
+
+  // チャット履歴を取得する関数
+  const fetchChatHistory = async () => {
+    try {
+      const response = await fetch('/api/chat/history', {
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch chat history');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setChatHistory(data.history || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chat history:', error);
+    }
+  };
+
+  // チャット履歴をクリアする関数
+  const clearChatHistory = async () => {
+    try {
+      const response = await fetch('/api/chat/history', {
+        method: 'DELETE',
+        headers: {
+          ...getAuthHeader(),
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear chat history');
+      }
+
+      setChatHistory([]);
+      setMessages([]);
+    } catch (error) {
+      console.error('Failed to clear chat history:', error);
+    }
+  };
+
+  // 履歴モーダルを開く時に履歴を取得
+  useEffect(() => {
+    if (isHistoryModalOpen) {
+      fetchChatHistory();
+    }
+  }, [isHistoryModalOpen]);
 
   return (
     <div className="h-[calc(100vh-2rem)] flex gap-4">
@@ -1073,7 +1232,11 @@ export default function Editor() {
             >
               <Sparkles className="w-4 h-4" />
             </button>
-            <button className="p-1 hover:bg-gray-100 rounded" title="History">
+            <button 
+              className="p-1 hover:bg-gray-100 rounded" 
+              title="History"
+              onClick={() => setIsHistoryModalOpen(true)}
+            >
               <History className="w-4 h-4" />
             </button>
           </div>
@@ -1291,6 +1454,63 @@ export default function Editor() {
               >
                 閉じる
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {isHistoryModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-[48rem] max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-2xl font-semibold">チャット履歴</h3>
+                <p className="text-sm text-gray-500 mt-1">過去の会話を確認できます</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={clearChatHistory}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  履歴をクリア
+                </button>
+                <button
+                  onClick={() => setIsHistoryModalOpen(false)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {chatHistory.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  チャット履歴がありません
+                </div>
+              ) : (
+                chatHistory.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`p-4 rounded-lg ${
+                      message.role === 'user'
+                        ? 'bg-blue-50 text-blue-800'
+                        : 'bg-gray-50 text-gray-800'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-sm font-medium">
+                        {message.role === 'user' ? 'あなた' : 'AI'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {new Date(message.timestamp).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

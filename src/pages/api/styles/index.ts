@@ -17,7 +17,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         orderBy: { createdAt: 'desc' },
       });
 
-      return res.status(200).json({ success: true, data: styles });
+      const processedStyles = styles.map(style => {
+        const settings = style.settings as any;
+        if (settings.embedding && typeof settings.embedding === 'string') {
+          try {
+            settings.embedding = JSON.parse(settings.embedding);
+          } catch (e) {
+            console.error('Failed to parse embedding:', e);
+            settings.embedding = null;
+          }
+        }
+        return style;
+      });
+
+      return res.status(200).json({ success: true, data: processedStyles });
     } catch (error) {
       console.error('Failed to fetch styles:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -32,16 +45,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(400).json({ success: false, message: 'Missing required fields' });
       }
 
+      const processedSettings = { ...settings };
+      if (processedSettings.embedding && Array.isArray(processedSettings.embedding)) {
+        processedSettings.embedding = JSON.stringify(processedSettings.embedding);
+      }
+
       const style = await prisma.styleProfile.create({
         data: {
           name,
           description,
-          settings,
+          settings: processedSettings,
           userId,
         },
       });
 
-      return res.status(201).json({ success: true, data: style });
+      const responseStyle = { ...style };
+      const responseSettings = responseStyle.settings as any;
+      if (responseSettings.embedding && typeof responseSettings.embedding === 'string') {
+        try {
+          responseSettings.embedding = JSON.parse(responseSettings.embedding);
+        } catch (e) {
+          console.error('Failed to parse embedding in response:', e);
+          responseSettings.embedding = null;
+        }
+      }
+
+      return res.status(201).json({ success: true, data: responseStyle });
     } catch (error) {
       console.error('Failed to create style:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });

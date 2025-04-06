@@ -11,27 +11,75 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const userId = authHeader.userId;
   const { id } = req.query;
 
+  if (typeof id !== 'string') {
+    return res.status(400).json({ success: false, message: 'Invalid ID' });
+  }
+
+  if (req.method === 'GET') {
+    try {
+      const style = await prisma.styleProfile.findUnique({
+        where: { id, userId },
+      });
+
+      if (!style) {
+        return res.status(404).json({ success: false, message: 'Style not found' });
+      }
+
+      // embeddingを配列として正しく処理
+      const responseStyle = { ...style };
+      const settings = responseStyle.settings as any;
+      if (settings.embedding && typeof settings.embedding === 'string') {
+        try {
+          settings.embedding = JSON.parse(settings.embedding);
+        } catch (e) {
+          console.error('Failed to parse embedding:', e);
+          settings.embedding = null;
+        }
+      }
+
+      return res.status(200).json({ success: true, data: responseStyle });
+    } catch (error) {
+      console.error('Failed to fetch style:', error);
+      return res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+  }
+
   if (req.method === 'PUT') {
     try {
-      const { name, description, sampleText, strength, embedding } = req.body;
+      const { name, description, settings } = req.body;
+
+      if (!name || !description || !settings) {
+        return res.status(400).json({ success: false, message: 'Missing required fields' });
+      }
+
+      // embeddingが配列の場合は文字列に変換して保存
+      const processedSettings = { ...settings };
+      if (processedSettings.embedding && Array.isArray(processedSettings.embedding)) {
+        processedSettings.embedding = JSON.stringify(processedSettings.embedding);
+      }
 
       const style = await prisma.styleProfile.update({
-        where: {
-          id: id as string,
-          userId,
-        },
+        where: { id, userId },
         data: {
           name,
           description,
-          settings: {
-            sampleText,
-            strength,
-            embedding,
-          },
+          settings: processedSettings,
         },
       });
 
-      return res.status(200).json({ success: true, data: style });
+      // レスポンスではembeddingを配列として返す
+      const responseStyle = { ...style };
+      const responseSettings = responseStyle.settings as any;
+      if (responseSettings.embedding && typeof responseSettings.embedding === 'string') {
+        try {
+          responseSettings.embedding = JSON.parse(responseSettings.embedding);
+        } catch (e) {
+          console.error('Failed to parse embedding in response:', e);
+          responseSettings.embedding = null;
+        }
+      }
+
+      return res.status(200).json({ success: true, data: responseStyle });
     } catch (error) {
       console.error('Failed to update style:', error);
       return res.status(500).json({ success: false, message: 'Internal server error' });
@@ -41,10 +89,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method === 'DELETE') {
     try {
       await prisma.styleProfile.delete({
-        where: {
-          id: id as string,
-          userId,
-        },
+        where: { id, userId },
       });
 
       return res.status(200).json({ success: true });

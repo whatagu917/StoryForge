@@ -34,8 +34,24 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // システムメッセージを作成
     let systemMessage = "あなたは物語の執筆を手伝うAIアシスタントです。";
     
-    if (styleProfile?.sampleText) {
-      systemMessage += `\n\n以下の文体で応答してください：\n${styleProfile.sampleText}`;
+    if (styleProfile) {
+      systemMessage += `\n\n以下の文体で応答してください：`;
+      
+      if (styleProfile.name) {
+        systemMessage += `\n\nスタイル名: ${styleProfile.name}`;
+      }
+      
+      if (styleProfile.description) {
+        systemMessage += `\n説明: ${styleProfile.description}`;
+      }
+      
+      if (styleProfile.sampleText) {
+        systemMessage += `\n\nサンプルテキスト:\n${styleProfile.sampleText}`;
+      }
+      
+      if (styleProfile.strength) {
+        systemMessage += `\n\n文体の強度: ${Math.round(styleProfile.strength * 100)}%`;
+      }
       
       if (styleProfile.embedding) {
         console.log('Style profile has embedding, using it for context');
