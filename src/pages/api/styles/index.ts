@@ -3,7 +3,7 @@ import { getAuthHeader } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { JsonValue } from '@prisma/client/runtime/library';
 import dbConnect from '@/lib/dbConnect';
-import Style from '@/models/Style';
+import Style from '../../../models/Style';
 
 interface StyleProfile {
   id: string;
@@ -64,7 +64,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           processedSettings.embedding = JSON.stringify(processedSettings.embedding);
         }
 
-        const style = await Style.create(req.body);
+        const style = await Style.create({
+          name,
+          description,
+          settings: processedSettings,
+          userId
+        });
+        
         console.log('Style created:', style._id);
         return res.status(201).json({
           success: true,
