@@ -2,75 +2,71 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { getAuthHeader } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    console.log('Starting revisions endpoint...');
-    console.log('Request method:', req.method);
-    console.log('Request headers:', {
-      authorization: req.headers.authorization ? 'present' : 'missing',
-      contentType: req.headers['content-type']
-    });
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  console.log('Revisions API called with method:', req.method);
+  console.log('Request headers:', req.headers);
 
+  try {
     const authHeader = getAuthHeader(req);
-    console.log('Auth header:', {
-      exists: !!authHeader,
-      userId: authHeader?.userId,
-      authorization: authHeader?.Authorization ? 'present' : 'missing'
-    });
+    console.log('Auth header present:', !!authHeader);
 
     if (!authHeader) {
-      console.log('Authentication failed: No auth header');
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
+      console.log('No auth header found');
+      return res.status(401).json({ message: 'Unauthorized' });
     }
 
     const userId = authHeader.userId;
-    console.log('User ID from auth header:', userId);
+    console.log('User ID from auth:', userId);
 
     if (!userId) {
-      console.log('Authentication failed: No user ID in auth header');
-      return res.status(401).json({ success: false, message: 'User ID not found' });
+      console.log('No user ID found in auth header');
+      return res.status(401).json({ message: 'Unauthorized: No user ID' });
     }
 
     if (req.method === 'GET') {
+      console.log('Fetching revisions for user:', userId);
       try {
-        console.log('Attempting to fetch revisions for user:', userId);
         const revisions = await prisma.revision.findMany({
-          where: {
-            userId,
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
+          where: { userId: userId },
+          orderBy: { updatedAt: 'desc' },
         });
-        console.log(`Successfully fetched ${revisions.length} revisions`);
-        return res.status(200).json({ success: true, data: revisions || [] });
-      } catch (error) {
+        console.log(`Found ${revisions.length} revisions for user`);
+        return res.status(200).json(revisions);
+      } catch (dbError: any) {
         console.error('Database error when fetching revisions:', {
-          error: error instanceof Error ? {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          } : error,
-          userId
+          error: dbError.message,
+          stack: dbError.stack,
+          code: dbError.code
         });
-        return res.status(500).json({ success: false, message: 'Internal server error' });
+        return res.status(500).json({
+          message: process.env.NODE_ENV === 'development'
+            ? `Failed to fetch revisions: ${dbError.message}`
+            : 'Failed to fetch revisions'
+        });
       }
     }
 
     if (req.method === 'POST') {
-      try {
-        const { content, previousContent, chapterId, storyId, type, chapterTitle, chapterNumber } = req.body;
-        console.log('Creating new revision:', {
-          chapterId,
-          storyId,
-          type,
-          chapterTitle,
-          chapterNumber,
-          userId,
-          contentLength: content?.length,
-          previousContentLength: previousContent?.length
-        });
+      console.log('Creating new revision for user:', userId);
+      const { content, previousContent, chapterId, storyId, type, chapterTitle, chapterNumber } = req.body;
 
+      if (!content || !previousContent || !chapterId || !storyId || !type || !chapterTitle || typeof chapterNumber !== 'number') {
+        console.log('Missing required fields:', {
+          content: !!content,
+          previousContent: !!previousContent,
+          chapterId: !!chapterId,
+          storyId: !!storyId,
+          type: !!type,
+          chapterTitle: !!chapterTitle,
+          chapterNumber: typeof chapterNumber === 'number'
+        });
+        return res.status(400).json({ message: 'All fields are required' });
+      }
+
+      try {
         const revision = await prisma.revision.create({
           data: {
             content,
@@ -83,60 +79,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             userId,
           },
         });
-        console.log('Successfully created revision:', revision.id);
-        return res.status(201).json({ success: true, data: revision });
-      } catch (error) {
+        console.log('Created new revision:', revision.id);
+        return res.status(201).json(revision);
+      } catch (dbError: any) {
         console.error('Database error when creating revision:', {
-          error: error instanceof Error ? {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          } : error,
-          userId
+          error: dbError.message,
+          stack: dbError.stack,
+          code: dbError.code
         });
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Internal server error', 
-          error: error instanceof Error ? error.message : String(error) 
+        return res.status(500).json({
+          message: process.env.NODE_ENV === 'development'
+            ? `Failed to create revision: ${dbError.message}`
+            : 'Failed to create revision'
         });
-      }
-    }
-
-    if (req.method === 'DELETE') {
-      try {
-        console.log('Attempting to delete all revisions for user:', userId);
-        await prisma.revision.deleteMany({
-          where: {
-            userId,
-          },
-        });
-        console.log('Successfully deleted all revisions for user:', userId);
-        return res.status(200).json({ success: true });
-      } catch (error) {
-        console.error('Database error when deleting revisions:', {
-          error: error instanceof Error ? {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-          } : error,
-          userId
-        });
-        return res.status(500).json({ success: false, message: 'Internal server error' });
       }
     }
 
     console.log('Method not allowed:', req.method);
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
-  } catch (error) {
-    console.error('Unexpected error in revisions endpoint:', {
-      error: error instanceof Error ? {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      } : error,
-      method: req.method,
-      hasAuthHeader: !!req.headers.authorization
+    return res.status(405).json({ message: 'Method not allowed' });
+  } catch (error: any) {
+    console.error('Unexpected error in revisions API:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name
     });
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    return res.status(500).json({
+      message: process.env.NODE_ENV === 'development'
+        ? `Internal server error: ${error.message}`
+        : 'Internal server error'
+    });
   }
 } 
