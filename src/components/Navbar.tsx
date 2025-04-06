@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { HelpCircle } from 'lucide-react';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -40,6 +41,12 @@ export default function Navbar() {
                     className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
                   >
                     スタイル
+                  </Link>
+                  <Link
+                    href="/help"
+                    className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                  >
+                    ヘルプ
                   </Link>
                 </>
               )}

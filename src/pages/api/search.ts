@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
 import { getAuthHeader } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { JsonValue } from '@prisma/client/runtime/library';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -11,6 +12,13 @@ interface StyleProfile {
   id: string;
   name: string;
   description: string;
+  settings: JsonValue;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ProcessedStyleProfile extends Omit<StyleProfile, 'settings'> {
   settings: {
     embedding?: number[];
     [key: string]: any;
@@ -22,7 +30,7 @@ interface SearchResult {
   name: string;
   description: string;
   similarity: number;
-  settings: StyleProfile['settings'];
+  settings: ProcessedStyleProfile['settings'];
 }
 
 // コサイン類似度を計算する関数
@@ -57,7 +65,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       encoding_format: "float",
     });
 
-    const queryEmbedding = embeddingResponse.data[0].embedding;
+    const embedding = embeddingResponse.data[0].embedding;
 
     // データベースから全てのスタイルプロファイルを取得
     const styleProfiles = await prisma.styleProfile.findMany({
@@ -68,17 +76,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // 各スタイルプロファイルのembeddingとクエリのembeddingを比較
     const results = styleProfiles
-      .map((profile: StyleProfile) => {
-        const profileEmbedding = profile.settings.embedding;
+      .map((profile) => {
+        const settings = profile.settings as any;
+        let profileEmbedding = settings.embedding;
+        
+        // 文字列として保存されているembeddingを配列に変換
+        if (profileEmbedding && typeof profileEmbedding === 'string') {
+          try {
+            profileEmbedding = JSON.parse(profileEmbedding);
+          } catch (e) {
+            console.error('Failed to parse embedding:', e);
+            return null;
+          }
+        }
+
         if (!profileEmbedding) return null;
 
-        const similarity = cosineSimilarity(queryEmbedding, profileEmbedding);
+        const similarity = cosineSimilarity(embedding, profileEmbedding);
         return {
           id: profile.id,
           name: profile.name,
           description: profile.description,
           similarity,
-          settings: profile.settings,
+          settings: {
+            ...settings,
+            embedding: profileEmbedding
+          }
         };
       })
       .filter((result: SearchResult | null): result is SearchResult => result !== null)

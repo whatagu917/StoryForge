@@ -40,6 +40,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
+      if (!userId) {
+        return res.status(401).json({ 
+          success: false, 
+          message: 'ユーザーIDが見つかりません' 
+        });
+      }
+
       // Use userId from auth header instead of request body
       const idea = await prisma.idea.create({
         data: {

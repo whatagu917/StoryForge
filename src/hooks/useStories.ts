@@ -33,7 +33,7 @@ export function useStories() {
 
       const res = await fetch('/api/stories', {
         headers: {
-          ...getAuthHeader(token),
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -62,7 +62,7 @@ export function useStories() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...getAuthHeader(token),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           title,

@@ -1,6 +1,26 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getAuthHeader } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { JsonValue } from '@prisma/client/runtime/library';
+
+interface StyleProfile {
+  id: string;
+  name: string;
+  description: string;
+  settings: JsonValue;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ProcessedStyleProfile extends Omit<StyleProfile, 'settings'> {
+  settings: {
+    embedding?: number[];
+    sampleText?: string;
+    strength?: number;
+    [key: string]: any;
+  };
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const authHeader = getAuthHeader(req);
@@ -17,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         orderBy: { createdAt: 'desc' },
       });
 
-      const processedStyles = styles.map(style => {
+      const processedStyles = styles.map((style) => {
         const settings = style.settings as any;
         if (settings.embedding && typeof settings.embedding === 'string') {
           try {
@@ -27,7 +47,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             settings.embedding = null;
           }
         }
-        return style;
+        return {
+          ...style,
+          settings
+        } as ProcessedStyleProfile;
       });
 
       return res.status(200).json({ success: true, data: processedStyles });
@@ -43,6 +66,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (!name || !description || !settings) {
         return res.status(400).json({ success: false, message: 'Missing required fields' });
+      }
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
       }
 
       const processedSettings = { ...settings };
