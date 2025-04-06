@@ -1,30 +1,17 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { getAuthHeader } from '@/lib/auth';
+import { withAuth, AuthUser } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-export default async function handler(
+async function handler(
   req: NextApiRequest,
-  res: NextApiResponse
+  res: NextApiResponse,
+  user: AuthUser
 ) {
   console.log('Revisions API called with method:', req.method);
-  console.log('Request headers:', req.headers);
 
   try {
-    const authHeader = getAuthHeader(req);
-    console.log('Auth header present:', !!authHeader);
-
-    if (!authHeader) {
-      console.log('No auth header found');
-      return res.status(401).json({ message: 'Unauthorized' });
-    }
-
-    const userId = authHeader.userId;
+    const userId = user.id;
     console.log('User ID from auth:', userId);
-
-    if (!userId) {
-      console.log('No user ID found in auth header');
-      return res.status(401).json({ message: 'Unauthorized: No user ID' });
-    }
 
     if (req.method === 'GET') {
       console.log('Fetching revisions for user:', userId);
@@ -109,4 +96,6 @@ export default async function handler(
         : 'Internal server error'
     });
   }
-} 
+}
+
+export default withAuth(handler); 
