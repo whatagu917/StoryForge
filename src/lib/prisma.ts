@@ -4,10 +4,13 @@ import { PrismaClient } from '@prisma/client';
 // exhausting your database connection limit.
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
+// Check if we're in a Vercel environment
+const isVercel = process.env.VERCEL === '1';
+
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
-    log: ['query'],
+    log: isVercel ? ['error'] : ['query'],
   });
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma; 
