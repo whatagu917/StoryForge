@@ -142,9 +142,52 @@ function NewChapterModal({ isOpen, onClose, onSave, currentChapterCount }: NewCh
   );
 }
 
-export default function Editor() {
+// エラーバウンダリコンポーネント
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Editor Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-lg">
+            <h2 className="text-2xl font-bold text-red-600 mb-4">エラーが発生しました</h2>
+            <p className="text-gray-600 mb-4">
+              {this.state.error?.message || '予期せぬエラーが発生しました。'}
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              ページを再読み込み
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function Editor() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [stories, setStories] = useState<Story[]>([]);
   const [currentStory, setCurrentStory] = useState<Story | null>(null);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
@@ -158,7 +201,6 @@ export default function Editor() {
   const [lastSavedState, setLastSavedState] = useState<Story | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isEditingStoryTitle, setIsEditingStoryTitle] = useState(false);
   const [editStoryTitle, setEditStoryTitle] = useState('');
   const [isChaptersVisible, setIsChaptersVisible] = useState(true);
@@ -227,7 +269,11 @@ export default function Editor() {
       if (!authHeader) {
         console.error('認証ヘッダーが取得できません');
         setError('認証に失敗しました。再度ログインしてください。');
-        router.push('/auth/login');
+        try {
+          window.location.href = '/auth/login';
+        } catch (error) {
+          console.error('Navigation error:', error);
+        }
         return false;
       }
 
@@ -244,7 +290,11 @@ export default function Editor() {
         if (response.status === 401) {
           console.error('認証エラー: セッションが期限切れです');
           setError('セッションが期限切れです。再度ログインしてください。');
-          router.push('/auth/login');
+          try {
+            window.location.href = '/auth/login';
+          } catch (error) {
+            console.error('Navigation error:', error);
+          }
           return false;
         }
         throw new Error('チャプターIDの修正に失敗しました');
@@ -262,26 +312,44 @@ export default function Editor() {
     }
   };
 
+  // 認証チェック
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (!isAuthenticated) {
+        try {
+          window.location.href = '/auth/login';
+        } catch (error) {
+          console.error('Navigation error:', error);
+        }
+        return;
+      }
+      setIsLoading(false);
+    };
+
+    checkAuth();
+  }, [isAuthenticated]);
+
   // ストーリーの読み込み
   useEffect(() => {
     const loadStories = async () => {
-      if (!isAuthenticated) {
-        router.push('/auth/login');
+      if (!isAuthenticated || isLoading) {
         return;
       }
 
-      setIsLoading(true);
       try {
-        // 認証ヘッダーを取得
         const authHeader = getAuthHeader();
         if (!authHeader) {
-          console.error('認証ヘッダーが取得できません');
+          console.error('認証ヘッダーが取得できません。localStorageにトークンが存在しない可能性があります。');
           setError('認証に失敗しました。再度ログインしてください。');
-          router.push('/auth/login');
+          try {
+            window.location.href = '/auth/login';
+          } catch (error) {
+            console.error('Navigation error:', error);
+          }
           return;
         }
 
-        // APIからストーリーを取得
+        console.log('Fetching stories with auth header:', authHeader);
         const response = await fetch('/api/stories', {
           headers: {
             ...authHeader,
@@ -293,66 +361,54 @@ export default function Editor() {
           if (response.status === 401) {
             console.error('認証エラー: セッションが期限切れです');
             setError('セッションが期限切れです。再度ログインしてください。');
-            router.push('/auth/login');
+            try {
+              window.location.href = '/auth/login';
+            } catch (error) {
+              console.error('Navigation error:', error);
+            }
             return;
           }
-          throw new Error('ストーリーの取得に失敗しました');
+          throw new Error(`ストーリーの取得に失敗しました。ステータス: ${response.status}`);
         }
 
         const data = await response.json();
-        if (data.success && data.data) {
-          // チャプターIDを修正
-          const fixedStories = data.data.map(fixChapterIds);
-          console.log('Loaded stories:', fixedStories);
-          setStories(fixedStories);
-          
-          // 修正したチャプターIDをサーバーに保存
-          for (const story of fixedStories) {
-            await saveFixedChapterIds(story);
-          }
-          
-          // 最後に編集したストーリーがあれば、それを選択
-          const lastEditedStoryId = localStorage.getItem(getStorageKey('storyforge-last-edited-story'));
-          if (lastEditedStoryId) {
-            const lastEditedStory = fixedStories.find((story: Story) => story.id === lastEditedStoryId);
-            if (lastEditedStory) {
-              setCurrentStory(lastEditedStory);
-              if (lastEditedStory.chapters.length > 0) {
-                setCurrentChapter(lastEditedStory.chapters[0]);
-              }
-            }
-          }
+        if (Array.isArray(data)) {
+          setStories(data);
+        } else if (data.success && Array.isArray(data.data)) {
+          setStories(data.data);
+        } else {
+          console.error('Invalid stories data format:', data);
+          setStories([]);
         }
-      } catch (err) {
-        console.error('Failed to load stories:', err);
+      } catch (error) {
+        console.error('Error loading stories:', error);
         setError('ストーリーの読み込みに失敗しました');
+        setStories([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadStories();
-  }, [isAuthenticated, router, user]);
+  }, [isAuthenticated, isLoading]);
 
-  // Load styles from API
+  // スタイルの読み込み
   useEffect(() => {
     const loadStyles = async () => {
       if (!isAuthenticated) {
-        router.push('/auth/login');
         return;
       }
 
-      setIsLoading(true);
       try {
-        // 認証ヘッダーを取得
         const authHeader = getAuthHeader();
         if (!authHeader) {
-          console.error('認証ヘッダーが取得できません');
+          console.error('認証ヘッダーが取得できません。localStorageにトークンが存在しない可能性があります。');
           setError('認証に失敗しました。再度ログインしてください。');
-          router.push('/auth/login');
+          window.location.href = '/auth/login';
           return;
         }
 
+        console.log('Fetching styles with auth header:', authHeader);
         const response = await fetch('/api/styles', {
           headers: {
             ...authHeader,
@@ -364,10 +420,10 @@ export default function Editor() {
           if (response.status === 401) {
             console.error('認証エラー: セッションが期限切れです');
             setError('セッションが期限切れです。再度ログインしてください。');
-            router.push('/auth/login');
+            window.location.href = '/auth/login';
             return;
           }
-          throw new Error('Failed to load styles');
+          throw new Error(`Failed to load styles. Status: ${response.status}`);
         }
 
         const data = await response.json();
@@ -379,39 +435,53 @@ export default function Editor() {
       } catch (err) {
         console.error('Failed to load styles:', err);
         setError('スタイルプロファイルの読み込みに失敗しました');
-      } finally {
-        setIsLoading(false);
       }
     };
 
-    loadStyles();
-  }, [isAuthenticated, router]);
+    if (isAuthenticated) {
+      loadStyles();
+    }
+  }, [isAuthenticated]);
 
-  // Save stories to localStorage whenever they change
+  // チャット履歴の読み込み
   useEffect(() => {
-    localStorage.setItem('storyforge-stories', JSON.stringify(stories));
+    if (isHistoryModalOpen) {
+      fetchChatHistory();
+    }
+  }, [isHistoryModalOpen]);
+
+  // localStorage関連のuseEffect
+  useEffect(() => {
+    if (stories.length > 0) {
+      localStorage.setItem('storyforge-stories', JSON.stringify(stories));
+    }
   }, [stories]);
 
-  // Save current story to localStorage whenever it changes
   useEffect(() => {
     if (currentStory) {
       localStorage.setItem('storyforge-current-story', JSON.stringify(currentStory));
     }
   }, [currentStory]);
 
-  // Save current chapter to localStorage whenever it changes
   useEffect(() => {
     if (currentChapter) {
       localStorage.setItem('storyforge-current-chapter', JSON.stringify(currentChapter));
     }
   }, [currentChapter]);
 
-  // Save last saved content to localStorage whenever it changes
   useEffect(() => {
     if (lastSavedContent !== null) {
       localStorage.setItem('storyforge-last-content', lastSavedContent);
     }
   }, [lastSavedContent]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   const handleCreateStory = async (title: string) => {
     if (!user) return;
@@ -797,8 +867,11 @@ export default function Editor() {
       if (!authHeader) {
         console.error('認証ヘッダーが取得できません');
         setError('認証に失敗しました。再度ログインしてください。');
-        // ログインページにリダイレクト
-        router.push('/auth/login');
+        try {
+          window.location.href = '/auth/login';
+        } catch (error) {
+          console.error('Navigation error:', error);
+        }
         return;
       }
 
@@ -850,7 +923,11 @@ export default function Editor() {
         if (response.status === 401) {
           console.error('認証エラー: セッションが期限切れです');
           setError('セッションが期限切れです。再度ログインしてください。');
-          router.push('/auth/login');
+          try {
+            window.location.href = '/auth/login';
+          } catch (error) {
+            console.error('Navigation error:', error);
+          }
           return;
         }
         const errorData = await response.json();
@@ -978,13 +1055,6 @@ export default function Editor() {
       console.error('Failed to clear chat history:', error);
     }
   };
-
-  // 履歴モーダルを開く時に履歴を取得
-  useEffect(() => {
-    if (isHistoryModalOpen) {
-      fetchChatHistory();
-    }
-  }, [isHistoryModalOpen]);
 
   return (
     <div className="h-[calc(100vh-2rem)] flex gap-4">
@@ -1526,5 +1596,14 @@ export default function Editor() {
         </div>
       )}
     </div>
+  );
+}
+
+// エラーバウンダリでラップしたエクスポート
+export default function EditorWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <Editor />
+    </ErrorBoundary>
   );
 } 

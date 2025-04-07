@@ -21,7 +21,10 @@ async function handler(
           orderBy: { updatedAt: 'desc' },
         });
         console.log(`Found ${revisions.length} revisions for user`);
-        return res.status(200).json(revisions);
+        return res.status(200).json({
+          success: true,
+          data: revisions
+        });
       } catch (dbError: any) {
         console.error('Database error when fetching revisions:', {
           error: dbError.message,
@@ -78,6 +81,48 @@ async function handler(
           message: process.env.NODE_ENV === 'development'
             ? `Failed to create revision: ${dbError.message}`
             : 'Failed to create revision'
+        });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      console.log('Deleting revisions for user:', userId);
+      try {
+        // リクエストボディからrevisionIdsを取得
+        const { revisionIds } = req.body;
+        
+        if (revisionIds && Array.isArray(revisionIds)) {
+          // 特定のリビジョンを削除
+          await prisma.revision.deleteMany({
+            where: {
+              id: { in: revisionIds },
+              userId: userId,
+            },
+          });
+        } else {
+          // すべてのリビジョンを削除
+          await prisma.revision.deleteMany({
+            where: {
+              userId: userId,
+            },
+          });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Revisions deleted successfully'
+        });
+      } catch (dbError: any) {
+        console.error('Database error when deleting revisions:', {
+          error: dbError.message,
+          stack: dbError.stack,
+          code: dbError.code
+        });
+        return res.status(500).json({
+          success: false,
+          message: process.env.NODE_ENV === 'development'
+            ? `Failed to delete revisions: ${dbError.message}`
+            : 'Failed to delete revisions'
         });
       }
     }

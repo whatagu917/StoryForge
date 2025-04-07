@@ -33,8 +33,11 @@ export default function LoginForm() {
         throw new Error(data.message || 'ログインに失敗しました');
       }
 
-      login(data.token, data.user);
-      router.push('/editor');
+      await login(data.token, data.user);
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      window.location.href = '/editor';
     } catch (err: any) {
       setError(err.message);
     } finally {
