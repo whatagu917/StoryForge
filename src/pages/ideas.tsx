@@ -163,30 +163,35 @@ export default function Ideas() {
     }
 
     try {
+      // 認証ヘッダーを取得
+      const authHeader = getAuthHeader();
+      console.log('認証ヘッダー:', authHeader);
+      
+      if (!authHeader) {
+        console.error('認証ヘッダーが取得できません');
+        alert('認証情報が無効です。再度ログインしてください。');
+        router.push('/auth/login');
+        return;
+      }
+
       const requestBody: {
         title: string;
         description: string;
         tags: string[];
         aiGenerated: boolean;
-        userId: string;
       } = {
         title: newIdeaTitle,
         description: newIdeaDescription,
         tags: newIdeaTags,
         aiGenerated: false,
-        userId: user.id,
       };
       
       console.log('リクエスト送信:', {
         url: '/api/ideas',
         method: 'POST',
-        body: requestBody
+        body: requestBody,
+        headers: authHeader
       });
-      
-      const authHeader = getAuthHeader();
-      if (!authHeader) {
-        throw new Error('認証ヘッダーが取得できません');
-      }
       
       const response = await fetch('/api/ideas', {
         method: 'POST',
@@ -197,6 +202,8 @@ export default function Ideas() {
         body: JSON.stringify(requestBody),
       });
 
+      console.log('レスポンスステータス:', response.status);
+      
       if (!response.ok) {
         const errorData = await response.json();
         console.error('サーバーエラー:', errorData);
@@ -204,6 +211,8 @@ export default function Ideas() {
       }
 
       const data = await response.json();
+      console.log('レスポンスデータ:', data);
+      
       if (data.success && data.data) {
         setIdeas([data.data, ...ideas]);
         setNewIdeaTitle('');

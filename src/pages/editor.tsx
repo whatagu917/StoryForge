@@ -188,6 +188,7 @@ function Editor() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [stories, setStories] = useState<Story[]>([]);
   const [currentStory, setCurrentStory] = useState<Story | null>(null);
   const [currentChapter, setCurrentChapter] = useState<Chapter | null>(null);
@@ -698,38 +699,46 @@ function Editor() {
           story.id === currentStory.id ? data.data : story
         ));
 
-        // Check if chapterId is a valid MongoDB ObjectID (12 bytes hex string)
-        const isValidObjectId = (id: string) => {
-          return /^[0-9a-fA-F]{24}$/.test(id);
-        };
+        // リビジョンを作成
+        try {
+          // リビジョンデータを準備
+          const revisionData = {
+            content: currentChapter.content,
+            previousContent: lastSavedContent || '',
+            chapterId: currentChapter.id,
+            storyId: currentStory.id,
+            type: 'manual',
+            chapterTitle: currentChapter.title,
+            chapterNumber: currentChapter.number
+          };
 
-        // Create revision only if chapterId is valid
-        if (isValidObjectId(currentChapter.id)) {
+          // デバッグ用にログを出力
+          console.log('Sending revision data:', revisionData);
+
+          // リビジョンを作成
           const revisionResponse = await fetch('/api/revisions', {
             method: 'POST',
             headers: {
               ...getAuthHeader(),
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              content: currentChapter.content,
-              previousContent: lastSavedContent || '',
-              chapterId: currentChapter.id,
-              storyId: currentStory.id,
-              type: 'manual',
-              chapterTitle: currentChapter.title,
-              chapterNumber: currentChapter.number
-            }),
+            body: JSON.stringify(revisionData),
           });
 
           if (!revisionResponse.ok) {
-            console.error('Failed to create revision');
+            const errorData = await revisionResponse.json();
+            console.error('Failed to create revision:', errorData);
+            // ユーザーにエラーを通知
+            alert('履歴の保存に失敗しました: ' + (errorData.message || '不明なエラー'));
+            return;
           }
-        } else {
-          console.error('Invalid chapterId format:', currentChapter.id);
+          
+          // リビジョンの作成に成功した場合のみ、成功メッセージを表示
+          alert('変更が保存されました');
+        } catch (revisionError) {
+          console.error('Error creating revision:', revisionError);
+          alert('履歴の保存に失敗しました');
         }
-
-        alert('変更が保存されました');
       }
     } catch (err) {
       console.error('Failed to save:', err);
@@ -849,7 +858,7 @@ function Editor() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isLoading) return;
+    if (!inputMessage.trim() || isAiLoading) return;
 
     const userMessage = {
       id: Date.now().toString(),
@@ -859,7 +868,7 @@ function Editor() {
 
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
-    setIsLoading(true);
+    setIsAiLoading(true);
 
     try {
       // 認証ヘッダーを取得
@@ -969,7 +978,7 @@ function Editor() {
       console.error('Failed to send message:', error);
       setError('メッセージの送信に失敗しました');
     } finally {
-      setIsLoading(false);
+      setIsAiLoading(false);
     }
   };
 
@@ -1352,7 +1361,7 @@ function Editor() {
               {message.content}
             </div>
           ))}
-          {isLoading && (
+          {isAiLoading && (
             <div className="flex justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
@@ -1368,13 +1377,13 @@ function Editor() {
               onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
               placeholder="AIに質問する..."
               className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              disabled={isLoading}
+              disabled={isAiLoading}
             />
             <button 
               onClick={handleSendMessage}
-              disabled={isLoading || !inputMessage.trim()}
+              disabled={isAiLoading || !inputMessage.trim()}
               className={`p-2 rounded-md ${
-                isLoading || !inputMessage.trim()
+                isAiLoading || !inputMessage.trim()
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-600 hover:bg-blue-700'
               } text-white`}

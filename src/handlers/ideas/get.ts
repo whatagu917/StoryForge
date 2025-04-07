@@ -14,7 +14,7 @@ export async function getIdeas(userId: string, res: NextApiResponse) {
     });
 
     log.info(`Found ideas`, { userId, count: ideas.length });
-    return res.status(200).json(ideas);
+    return res.status(200).json({ success: true, data: ideas });
   } catch (error) {
     log.error('Failed to fetch ideas', { userId, error });
     throw new APIError(500, 'Failed to fetch ideas');

@@ -11,7 +11,7 @@ interface CreateIdeaData {
 }
 
 export async function createIdea(userId: string, data: CreateIdeaData, res: NextApiResponse) {
-  log.info('Creating new idea', { userId });
+  log.info('Creating new idea', { userId, data });
 
   const { title, description, tags = [], aiGenerated = false } = data;
 
@@ -21,6 +21,8 @@ export async function createIdea(userId: string, data: CreateIdeaData, res: Next
   }
 
   try {
+    log.info('Attempting to create idea in database', { userId, title });
+    
     const idea = await prisma.idea.create({
       data: {
         title,
@@ -32,9 +34,10 @@ export async function createIdea(userId: string, data: CreateIdeaData, res: Next
     });
 
     log.info('Created new idea', { userId, ideaId: idea.id });
-    return res.status(201).json(idea);
+    return res.status(201).json({ success: true, data: idea });
   } catch (error) {
     log.error('Failed to create idea', { userId, error });
+    console.error('Database error:', error);
     throw new APIError(500, 'Failed to create idea');
   }
 } 
