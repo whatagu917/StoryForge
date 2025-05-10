@@ -38,6 +38,7 @@ interface UserPayload {
   email: string;
   name: string;
   emailVerified: boolean;
+  isGuest?: boolean;
 }
 
 export function generateToken(user: UserPayload): string {
@@ -91,13 +92,20 @@ export function verifyToken(token: string): UserPayload {
         throw new Error('Invalid token payload');
       }
 
-      const payload = decoded as UserPayload;
+      // isGuestも含めて返す
+      const payload = decoded as UserPayload & { isGuest?: boolean };
       if (!payload.id || !payload.email || !payload.name) {
         console.error('Invalid token payload:', payload);
         throw new Error('Invalid token payload');
       }
 
-      return payload;
+      return {
+        id: payload.id,
+        email: payload.email,
+        name: payload.name,
+        emailVerified: payload.emailVerified,
+        isGuest: payload.isGuest,
+      };
     } catch (error) {
       console.error('Token verification error:', error);
       throw new Error('Token verification failed');
