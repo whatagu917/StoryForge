@@ -1,103 +1,121 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { AuthUser } from '@/lib/auth';
+import { verifyToken } from '@/lib/auth';
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
 
 interface AuthContextType {
-  user: AuthUser | null;
-  loading: boolean;
-  error: string | null;
-  isAuthenticated: boolean;
-  login: (token: string, user: AuthUser) => void;
+  user: User | null;
+  token: string | null;
+  login: (token: string, user: User) => void;
   logout: () => void;
-  register: (token: string, user: AuthUser) => void;
+  register: (token: string, user: User) => void;
+  isAuthenticated: boolean;
+  loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
-  loading: true,
-  error: null,
-  isAuthenticated: false,
+  token: null,
   login: () => {},
   logout: () => {},
   register: () => {},
+  isAuthenticated: false,
+  loading: true,
 });
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    // ローカルストレージからユーザー情報を復元
-    const storedUser = localStorage.getItem('user');
+    // ローカルストレージからユーザー情報を読み込む
     const storedToken = localStorage.getItem('token');
-    
-    if (storedUser && storedToken) {
+    const storedUser = localStorage.getItem('user');
+
+    if (storedToken && storedUser) {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        // ユーザー情報の検証
-        if (parsedUser && parsedUser.id && parsedUser.email && parsedUser.username) {
-          setUser(parsedUser);
+        // トークンの検証
+        const decoded = verifyToken(storedToken);
+        if (decoded && decoded.id) {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
         } else {
-          console.error('Invalid user data in localStorage');
-          localStorage.removeItem('user');
+          // トークンが無効な場合はクリア
           localStorage.removeItem('token');
+          localStorage.removeItem('user');
         }
-      } catch (err) {
-        console.error('Failed to parse stored user:', err);
-        localStorage.removeItem('user');
+      } catch (error) {
+        console.error('Token verification failed:', error);
+        // トークンが無効な場合はクリア
         localStorage.removeItem('token');
+        localStorage.removeItem('user');
       }
     }
     setLoading(false);
   }, []);
 
-  const login = (token: string, userData: AuthUser) => {
-    // ユーザー情報の検証
-    if (!userData || !userData.id || !userData.email || !userData.username) {
-      console.error('Invalid user data in login:', userData);
-      return;
+  const login = (newToken: string, newUser: User) => {
+    try {
+      // トークンの検証
+      const decoded = verifyToken(newToken);
+      if (decoded && decoded.id) {
+        setToken(newToken);
+        setUser(newUser);
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('user', JSON.stringify(newUser));
+      } else {
+        throw new Error('Invalid token');
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
     }
-    
-    setUser(userData);
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    router.push('/editor');
-  };
-
-  const register = (token: string, userData: AuthUser) => {
-    // ユーザー情報の検証
-    if (!userData || !userData.id || !userData.email || !userData.username) {
-      console.error('Invalid user data in register:', userData);
-      return;
-    }
-    
-    setUser(userData);
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
   };
 
   const logout = () => {
+    setToken(null);
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    // リダイレクトをsetTimeoutで遅延させる
-    setTimeout(() => {
-      router.push('/auth/login');
-    }, 0);
+    router.push('/auth/login');
+  };
+
+  const register = (newToken: string, newUser: User) => {
+    try {
+      // トークンの検証
+      const decoded = verifyToken(newToken);
+      if (decoded && decoded.id) {
+        setToken(newToken);
+        setUser(newUser);
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('user', JSON.stringify(newUser));
+      } else {
+        throw new Error('Invalid token');
+      }
+    } catch (error) {
+      console.error('Registration failed:', error);
+      throw error;
+    }
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        loading,
-        error,
-        isAuthenticated: !!user && !!user.id,
+        token,
         login,
         logout,
         register,
+        isAuthenticated: !!user,
+        loading,
       }}
     >
       {children}

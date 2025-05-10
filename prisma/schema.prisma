@@ -11,17 +11,23 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(auto()) @map("_id") @db.ObjectId
-  email         String         @unique
-  name          String?
-  revisions     Revision[]
-  ideas         Idea[]
-  styleProfiles StyleProfile[]
-  chatHistory   ChatHistory[]
-  chapters      Chapter[]
-  stories       Story[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                  String         @id @default(auto()) @map("_id") @db.ObjectId
+  email               String         @unique
+  name                String?
+  password            String         // パスワードフィールドを追加
+  revisions           Revision[]
+  ideas               Idea[]
+  styleProfiles       StyleProfile[]
+  chatHistory         ChatHistory[]
+  chapters            Chapter[]
+  stories             Story[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  emailVerified       Boolean        @default(false)
+  verificationToken   String?
+  verificationExpires DateTime?
+  resetToken          String?
+  resetTokenExpires   DateTime?
 }
 
 model Revision {

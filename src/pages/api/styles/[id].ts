@@ -88,10 +88,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'DELETE') {
     try {
+      // まずスタイルが存在するか確認
+      const existingStyle = await prisma.styleProfile.findUnique({
+        where: { id, userId },
+      });
+
+      if (!existingStyle) {
+        console.log(`Style not found or not owned by user: id=${id}, userId=${userId}`);
+        return res.status(404).json({ 
+          success: false, 
+          message: 'Style not found or you do not have permission to delete it' 
+        });
+      }
+
+      // スタイルが存在する場合は削除
       await prisma.styleProfile.delete({
         where: { id, userId },
       });
 
+      console.log(`Style deleted successfully: id=${id}, userId=${userId}`);
       return res.status(200).json({ success: true });
     } catch (error) {
       console.error('Failed to delete style:', error);

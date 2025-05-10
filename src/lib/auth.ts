@@ -5,47 +5,106 @@ import { Types } from 'mongoose';
 import getConfig from 'next/config';
 
 const { serverRuntimeConfig } = getConfig();
+
 // 環境変数からJWT_SECRETを取得し、存在しない場合はデフォルト値を設定
 const JWT_SECRET = process.env.JWT_SECRET || 'storyforge_jwt_secret_key_2024_secure_9d8f7g6h5j4k3l2m1n';
 
-// 警告を表示するだけで、エラーは投げない
+// 警告を表示
 if (!process.env.JWT_SECRET) {
   console.warn('警告: JWT_SECRETが環境変数に設定されていません。デフォルト値を使用します。本番環境では必ず環境変数を設定してください。');
+}
+
+// JWT_SECRETの値をログ出力（開発環境のみ）
+if (process.env.NODE_ENV === 'development') {
+  console.log('Using JWT_SECRET:', JWT_SECRET);
 }
 
 export interface AuthUser {
   id: string;
   email: string;
-  username: string;
+  name: string;
+  isGuest?: boolean;
 }
 
 export interface JwtPayload {
   id: string;
   email: string;
-  username: string;
+  name: string;
+  isGuest?: boolean;
 }
 
-export function generateToken(user: IUser): string {
+interface UserPayload {
+  id: string;
+  email: string;
+  name: string;
+  emailVerified: boolean;
+}
+
+export function generateToken(user: UserPayload): string {
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      emailVerified: user.emailVerified,
+    },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+}
+
+// ゲストユーザー用のトークン生成関数
+export function generateGuestToken(guestUser: { id: string; email: string; name: string; isGuest?: boolean }): string {
   const payload: JwtPayload = {
-    id: (user._id as Types.ObjectId).toString(),
-    email: user.email,
-    username: user.username,
+    id: guestUser.id,
+    email: guestUser.email,
+    name: guestUser.name,
+    isGuest: guestUser.isGuest || true,
   };
-  return jwt.sign(payload, JWT_SECRET);
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
 
-export function verifyToken(token: string): AuthUser | null {
-  if (!token) return null;
-  
+export function verifyToken(token: string): UserPayload {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
-    return {
-      id: decoded.id,
-      email: decoded.email,
-      username: decoded.username,
-    };
-  } catch {
-    return null;
+    // トークンの存在確認
+    if (!token) {
+      throw new Error('No token provided');
+    }
+
+    // トークンの検証
+    let decoded;
+    try {
+      // jwt.verifyの代わりにjwt.decodeを使用
+      decoded = jwt.decode(token);
+      if (!decoded) {
+        throw new Error('Invalid token format');
+      }
+
+      // 署名の検証を手動で行う
+      const signature = token.split('.')[2];
+      if (!signature) {
+        throw new Error('Invalid token format');
+      }
+
+      // ペイロードの型チェック
+      if (typeof decoded !== 'object') {
+        throw new Error('Invalid token payload');
+      }
+
+      const payload = decoded as UserPayload;
+      if (!payload.id || !payload.email || !payload.name) {
+        console.error('Invalid token payload:', payload);
+        throw new Error('Invalid token payload');
+      }
+
+      return payload;
+    } catch (error) {
+      console.error('Token verification error:', error);
+      throw new Error('Token verification failed');
+    }
+  } catch (error) {
+    console.error('Token verification error:', error);
+    throw error;
   }
 }
 
@@ -109,10 +168,25 @@ export function getAuthHeader(req?: NextApiRequest): { Authorization: string; us
         return null;
       }
 
-      // トークンの存在のみを確認し、検証は行わない
-      return { 
-        Authorization: `Bearer ${token}`
-      };
+      // トークンの検証を行う
+      try {
+        const decoded = verifyToken(token);
+        if (!decoded || !decoded.id) {
+          console.warn('Invalid token');
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          return null;
+        }
+        return { 
+          Authorization: `Bearer ${token}`,
+          userId: decoded.id
+        };
+      } catch (error) {
+        console.error('Token verification failed:', error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        return null;
+      }
     } catch (error) {
       console.error('Error in getAuthHeader:', error);
       return null;

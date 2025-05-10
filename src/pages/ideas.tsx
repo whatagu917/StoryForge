@@ -134,8 +134,13 @@ export default function Ideas() {
   }
 
   // Add authentication check
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      router.push('/auth/login');
+    }
+  }, [isAuthenticated, user, router]);
+
   if (!isAuthenticated || !user) {
-    router.push('/auth/login');
     return null;
   }
 
@@ -153,7 +158,7 @@ export default function Ideas() {
         user: user ? {
           id: user.id,
           email: user.email,
-          username: user.username
+          name: user.name
         } : null,
         authLoading
       });

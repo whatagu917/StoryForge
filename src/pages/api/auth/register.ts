@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import dbConnect from '@/lib/dbConnect';
-import User from '@/models/User';
+import { prisma } from '@/lib/prisma';
 import { generateToken } from '@/lib/auth';
+import { generateVerificationToken, sendVerificationEmail } from '@/lib/email';
+import bcrypt from 'bcryptjs';
 
 export default async function handler(
   req: NextApiRequest,
@@ -17,7 +18,7 @@ export default async function handler(
   try {
     // データベース接続
     console.log('Connecting to database...');
-    await dbConnect();
+    await prisma.$connect();
     console.log('Database connected successfully');
 
     const { email, password, username } = req.body;
@@ -34,7 +35,9 @@ export default async function handler(
 
     // メールアドレスの重複チェック
     console.log('Checking for existing user...');
-    const existingUser = await User.findOne({ email });
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
     if (existingUser) {
       console.log('Email already exists:', email);
       return res.status(400).json({
@@ -43,30 +46,46 @@ export default async function handler(
       });
     }
 
+    // パスワードのハッシュ化
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // 確認トークンの生成
+    const verificationToken = generateVerificationToken();
+
     // ユーザーの作成
-    console.log('Creating new user...');
-    const user = await User.create({
-      email,
-      password,
-      username,
+    const user = await prisma.user.create({
+      data: {
+        email,
+        name: username,
+        password: hashedPassword,
+        emailVerified: false,
+        verificationToken,
+      },
     });
-    console.log('User created successfully:', user._id);
+    console.log('User created successfully:', user.id);
 
     // JWTトークンの生成
-    const token = generateToken(user);
+    const token = generateToken({
+      id: user.id,
+      email: user.email,
+      username: user.name || '',
+      emailVerified: user.emailVerified,
+    });
 
-    // パスワードを除外してレスポンスを返す
-    const { password: _, ...userWithoutPassword } = user.toObject();
+    // 確認メールを送信
+    await sendVerificationEmail(email, verificationToken);
+
+    // レスポンスを返す
     const userResponse = {
-      id: user._id.toString(),
-      email: userWithoutPassword.email,
-      username: userWithoutPassword.username,
+      id: user.id,
+      email: user.email,
+      name: user.name,
     };
 
     console.log('Registration successful');
     return res.status(201).json({
       success: true,
-      message: '登録が完了しました',
+      message: '登録が完了しました。確認メールをご確認ください。',
       user: userResponse,
       token,
     });

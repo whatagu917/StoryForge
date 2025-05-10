@@ -1,7 +1,8 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import dbConnect from '@/lib/dbConnect';
-import User from '@/models/User';
+import { prisma } from '@/lib/prisma';
 import { generateToken } from '@/lib/auth';
+import bcrypt from 'bcryptjs';
+import { Types } from 'mongoose';
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,10 +13,6 @@ export default async function handler(
   }
 
   try {
-    console.log('Attempting database connection...');
-    await dbConnect();
-    console.log('Database connection successful');
-
     const { email, password } = req.body;
     console.log('Login attempt for email:', email);
 
@@ -29,21 +26,33 @@ export default async function handler(
 
     // ユーザーの検索
     console.log('Searching for user...');
-    const user = await User.findOne({ email });
+    const user = await prisma.user.findUnique({
+      where: { email }
+    });
+    
     if (!user) {
       console.log('User not found for email:', email);
       return res.status(401).json({
         message: 'メールアドレスまたはパスワードが正しくありません'
       });
     }
-    console.log('User found:', { id: user._id, email: user.email });
+    console.log('User found:', { id: user.id, email: user.email });
+
+    // メール確認のチェック
+    if (!user.emailVerified) {
+      console.log('Email not verified for user:', user.id);
+      return res.status(403).json({
+        message: 'メールアドレスの確認が完了していません。確認メールをご確認ください。',
+        needsVerification: true
+      });
+    }
 
     // パスワードの検証
     console.log('Verifying password...');
     try {
-      const isMatch = await user.comparePassword(password);
+      const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
-        console.log('Password verification failed for user:', user._id);
+        console.log('Password verification failed for user:', user.id);
         return res.status(401).json({
           message: 'メールアドレスまたはパスワードが正しくありません'
         });
@@ -58,21 +67,26 @@ export default async function handler(
     console.log('Generating JWT token...');
     let token;
     try {
-      token = generateToken(user);
-      console.log('Token generated successfully');
+      const tokenPayload = {
+        id: user.id,
+        email: user.email,
+        name: user.name || '',
+        emailVerified: user.emailVerified
+      };
+      console.log('Token payload:', tokenPayload);
+      token = generateToken(tokenPayload);
+      console.log('Token generated successfully:', token.substring(0, 20) + '...');
     } catch (tokenError) {
       console.error('Token generation error:', tokenError);
       throw tokenError;
     }
 
-    // パスワードを除外してレスポンスを返す
-    const { password: _, ...userWithoutPassword } = user.toObject();
-
-    // ユーザー情報にidフィールドを追加
+    // レスポンスを返す
     const userResponse = {
-      id: user._id.toString(),
-      email: userWithoutPassword.email,
-      username: userWithoutPassword.username,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      emailVerified: user.emailVerified,
     };
 
     console.log('Login successful for user:', userResponse.id);

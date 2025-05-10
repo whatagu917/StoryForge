@@ -18,7 +18,7 @@ interface Revision {
 
 export default function History() {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const [revisions, setRevisions] = useState<Revision[]>([]);
   const [selectedRevision, setSelectedRevision] = useState<Revision | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -26,6 +26,7 @@ export default function History() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [compareMode, setCompareMode] = useState<'side-by-side' | 'unified'>('side-by-side');
   const [selectedRevisions, setSelectedRevisions] = useState<string[]>([]);
+  const [isGuestUser, setIsGuestUser] = useState(false);
 
   // Load revisions from API
   useEffect(() => {
@@ -34,6 +35,10 @@ export default function History() {
         router.push('/auth/login');
         return;
       }
+
+      // ゲストユーザーの場合はリビジョン履歴を取得しない
+      // 注意: ゲストユーザーの識別方法が変更されたため、このチェックは不要になりました
+      // ゲストユーザーは通常のObjectId形式のIDを持つようになりました
 
       setIsLoading(true);
       try {
@@ -64,7 +69,7 @@ export default function History() {
     };
 
     loadRevisions();
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, router, user]);
 
   const handleRestore = async (revision: Revision) => {
     if (!window.confirm('Are you sure you want to restore this version?')) return;
@@ -162,6 +167,39 @@ export default function History() {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-red-500">Error: {error.message}</div>
+      </div>
+    );
+  }
+
+  if (isGuestUser) {
+    return (
+      <div className="h-[calc(100vh-2rem)] p-4 bg-gray-50">
+        <div className="bg-white shadow rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.back()}
+              className="p-2 hover:bg-gray-100 rounded-full"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-semibold">History</h1>
+          </div>
+        </div>
+        <div className="bg-white shadow rounded-lg p-8 text-center">
+          <HistoryIcon className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-xl font-semibold mb-2">リビジョン履歴は利用できません</h2>
+          <p className="text-gray-600 mb-4">
+            ゲストユーザーではリビジョン履歴機能は利用できません。アカウントを作成してログインすると、編集履歴を保存できます。
+          </p>
+          <button
+            onClick={() => {
+              logout();
+            }}
+            className="inline-block px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            アカウントを作成
+          </button>
+        </div>
       </div>
     );
   }

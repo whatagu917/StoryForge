@@ -7,6 +7,10 @@ import { APIError } from '@/lib/api/errors';
 export async function getIdeas(userId: string, res: NextApiResponse) {
   log.info('Fetching ideas', { userId });
 
+  // ゲストユーザーの場合は空の配列を返す
+  // 注意: ゲストユーザーの識別方法が変更されたため、このチェックは不要になりました
+  // ゲストユーザーは通常のObjectId形式のIDを持つようになりました
+
   try {
     const ideas = await prisma.idea.findMany({
       where: { userId },

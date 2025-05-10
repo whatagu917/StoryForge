@@ -12,6 +12,7 @@ export default function LoginForm() {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [guestLoading, setGuestLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +43,34 @@ export default function LoginForm() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setError('');
+    setGuestLoading(true);
+
+    try {
+      // ゲストユーザー情報を作成
+      const guestUser = {
+        id: 'guest-' + Date.now(),
+        email: `guest-${Date.now()}@example.com`,
+        username: 'ゲストユーザー',
+      };
+
+      // ゲスト用のトークンを生成（実際のプロジェクトでは適切なトークン生成ロジックを使用）
+      const guestToken = 'guest-token-' + Date.now();
+
+      // 認証コンテキストのlogin関数を使用してゲストログイン
+      await login(guestToken, guestUser);
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      window.location.href = '/editor';
+    } catch (err: any) {
+      setError(err.message || 'ゲストログインに失敗しました');
+    } finally {
+      setGuestLoading(false);
     }
   };
 
@@ -103,6 +132,17 @@ export default function LoginForm() {
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
             >
               {loading ? 'ログイン中...' : 'ログイン'}
+            </button>
+          </div>
+
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={handleGuestLogin}
+              disabled={guestLoading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            >
+              {guestLoading ? 'ゲストログイン中...' : 'ゲストとしてログイン'}
             </button>
           </div>
 

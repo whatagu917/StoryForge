@@ -13,6 +13,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   const userId = authHeader.userId;
+  
+  // ゲストユーザーの場合はエラーを返す
+  // 注意: ゲストユーザーの識別方法が変更されたため、このチェックは不要になりました
+  // ゲストユーザーは通常のObjectId形式のIDを持つようになりました
+
   const { id } = req.query;
 
   try {

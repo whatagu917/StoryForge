@@ -222,9 +222,16 @@ export default function Styles() {
   };
 
   const handleDeleteStyle = async (id: string) => {
+    if (!id) {
+      console.error('Style ID is undefined');
+      alert('スタイルIDが無効です');
+      return;
+    }
+
     if (!window.confirm('このスタイルプロファイルを削除してもよろしいですか？')) return;
 
     try {
+      console.log('Deleting style with ID:', id);
       const response = await fetch(`/api/styles/${id}`, {
         method: 'DELETE',
         headers: {
@@ -234,7 +241,8 @@ export default function Styles() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete style profile');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete style profile');
       }
 
       const data = await response.json();

@@ -13,6 +13,10 @@ async function handler(
     const userId = user.id;
     console.log('User ID from auth:', userId);
 
+    // ゲストユーザーの場合は空の配列を返す
+    // 注意: ゲストユーザーの識別方法が変更されたため、このチェックは不要になりました
+    // ゲストユーザーは通常のObjectId形式のIDを持つようになりました
+
     if (req.method === 'GET') {
       console.log('Fetching revisions for user:', userId);
       try {
@@ -130,14 +134,14 @@ async function handler(
     console.log('Method not allowed:', req.method);
     return res.status(405).json({ message: 'Method not allowed' });
   } catch (error: any) {
-    console.error('Unexpected error in revisions API:', {
-      error: error.message,
+    console.error('Revisions API error:', {
+      message: error.message,
       stack: error.stack,
       name: error.name
     });
     return res.status(500).json({
       message: process.env.NODE_ENV === 'development'
-        ? `Internal server error: ${error.message}`
+        ? `Revisions API error: ${error.message}`
         : 'Internal server error'
     });
   }
