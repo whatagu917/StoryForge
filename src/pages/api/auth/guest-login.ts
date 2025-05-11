@@ -17,7 +17,7 @@ export default async function handler(
     const guestUser = {
       id: guestId,
       email: `guest-${Date.now()}@example.com`,
-      name: 'ゲストユーザー',
+      username: 'ゲストユーザー',
       isGuest: true, // ゲストユーザーであることを示すフラグ
     };
 
@@ -30,7 +30,7 @@ export default async function handler(
       user: {
         id: guestUser.id,
         email: guestUser.email,
-        name: guestUser.name,
+        username: guestUser.username,
         isGuest: guestUser.isGuest
       },
       token,
