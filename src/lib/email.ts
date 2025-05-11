@@ -19,7 +19,9 @@ export function generateVerificationToken(): string {
 
 // 確認リンクの生成
 export function generateVerificationUrl(token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NODE_ENV === 'production'
+    ? 'https://storyforge.vercel.app'
+    : 'http://localhost:3000';
   return `${baseUrl}/auth/verify?token=${token}`;
 }
 
