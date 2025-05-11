@@ -32,14 +32,6 @@ export default async function handler(
       });
     }
 
-    // メール確認済みの場合はエラー
-    if (user.emailVerified) {
-      return res.status(400).json({
-        success: false,
-        message: 'メールアドレスは既に確認済みです'
-      });
-    }
-
     // 新しい確認トークンの生成
     const verificationToken = generateVerificationToken();
 
