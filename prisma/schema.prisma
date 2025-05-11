@@ -28,6 +28,8 @@ model User {
   verificationExpires DateTime?
   resetToken          String?
   resetTokenExpires   DateTime?
+
+  @@map("users")
 }
 
 model Revision {
