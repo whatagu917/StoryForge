@@ -53,9 +53,10 @@ export default function LoginForm() {
     try {
       // ゲストユーザー情報を作成
       const guestUser = {
-        id: 'guest-' + Date.now(),
-        email: `guest-${Date.now()}@example.com`,
-        username: 'ゲストユーザー',
+        id: 'guest',
+        email: 'guest@example.com',
+        name: 'ゲストユーザー',
+        emailVerified: true,
       };
 
       // ゲスト用のトークンを生成（実際のプロジェクトでは適切なトークン生成ロジックを使用）
