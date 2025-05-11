@@ -14,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // DBからリフレッシュトークンを検索
-    const tokenRecord = await prisma.RefreshToken.findUnique({ where: { token: refreshToken } });
+    const tokenRecord = await prisma.refreshToken.findUnique({ where: { token: refreshToken } });
     if (!tokenRecord || tokenRecord.expires < new Date()) {
       return res.status(401).json({ message: '無効または期限切れのリフレッシュトークンです' });
     }
