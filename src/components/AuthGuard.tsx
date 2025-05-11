@@ -38,7 +38,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
       const currentPath = router.pathname;
       const authRequiredPages = ['/ideas', '/styles', '/editor'];
-      const publicPages = ['/auth/login', '/auth/register'];
+      const publicPages = ['/auth/login', '/auth/register', '/auth/verify', '/auth/verified'];
 
       if (!isAuthenticated && authRequiredPages.includes(currentPath)) {
         await handleNavigation('/auth/login');
