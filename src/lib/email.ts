@@ -77,7 +77,9 @@ export function generatePasswordResetToken(): string {
 
 // パスワードリセットリンクの生成
 export function generatePasswordResetUrl(email: string, token: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = process.env.NODE_ENV === 'production'
+    ? 'https://storyforge.vercel.app'
+    : 'http://localhost:3000';
   return `${baseUrl}/auth/reset-password?token=${token}`;
 }
 
