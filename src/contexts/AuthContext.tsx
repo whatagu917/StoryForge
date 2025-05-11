@@ -47,8 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // トークンの検証
         const decoded = verifyToken(storedToken);
         if (decoded && decoded.id) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
           setIsGuest(!!decoded.isGuest);
         } else {
           // トークンが無効な場合はクリア
@@ -74,11 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // トークンの検証
       const decoded = verifyToken(newToken);
       if (decoded && decoded.id) {
-        setToken(newToken);
-        setUser(newUser);
+    setToken(newToken);
+    setUser(newUser);
         setIsGuest(!!decoded.isGuest);
-        localStorage.setItem('token', newToken);
-        localStorage.setItem('user', JSON.stringify(newUser));
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(newUser));
       } else {
         throw new Error('Invalid token');
       }
@@ -102,11 +102,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // トークンの検証
       const decoded = verifyToken(newToken);
       if (decoded && decoded.id) {
-        setToken(newToken);
-        setUser(newUser);
+    setToken(newToken);
+    setUser(newUser);
         setIsGuest(!!decoded.isGuest);
-        localStorage.setItem('token', newToken);
-        localStorage.setItem('user', JSON.stringify(newUser));
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(newUser));
       } else {
         throw new Error('Invalid token');
       }
