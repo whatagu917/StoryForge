@@ -21,11 +21,11 @@ export default async function handler(
     await prisma.$connect();
     console.log('Database connected successfully');
 
-    const { email, password, name } = req.body;
-    console.log('Received registration data:', { email, name });
+    const { email, password, username } = req.body;
+    console.log('Received registration data:', { email, username });
 
     // 入力値の検証
-    if (!email || !password || !name) {
+    if (!email || !password || !username) {
       console.log('Missing required fields');
       return res.status(400).json({
         success: false,
@@ -56,7 +56,7 @@ export default async function handler(
     const user = await prisma.user.create({
       data: {
         email,
-        name,
+        username,
         password: hashedPassword,
         emailVerified: false,
         verificationToken,
@@ -68,7 +68,7 @@ export default async function handler(
     const token = generateToken({
       id: user.id,
       email: user.email,
-      name: user.name || '',
+      username: user.username || '',
       emailVerified: user.emailVerified,
     });
 
@@ -79,7 +79,7 @@ export default async function handler(
     const userResponse = {
       id: user.id,
       email: user.email,
-      name: user.name,
+      username: user.username,
     };
 
     console.log('Registration successful');

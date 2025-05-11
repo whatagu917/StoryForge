@@ -22,21 +22,21 @@ if (process.env.NODE_ENV === 'development') {
 export interface AuthUser {
   id: string;
   email: string;
-  name: string;
+  username: string;
   isGuest?: boolean;
 }
 
 export interface JwtPayload {
   id: string;
   email: string;
-  name: string;
+  username: string;
   isGuest?: boolean;
 }
 
 interface UserPayload {
   id: string;
   email: string;
-  name: string;
+  username: string;
   emailVerified: boolean;
   isGuest?: boolean;
 }
@@ -46,7 +46,7 @@ export function generateToken(user: UserPayload): string {
     {
       id: user.id,
       email: user.email,
-      name: user.name,
+      username: user.username,
       emailVerified: user.emailVerified,
     },
     JWT_SECRET,
@@ -55,11 +55,11 @@ export function generateToken(user: UserPayload): string {
 }
 
 // ゲストユーザー用のトークン生成関数
-export function generateGuestToken(guestUser: { id: string; email: string; name: string; isGuest?: boolean }): string {
+export function generateGuestToken(guestUser: { id: string; email: string; username: string; isGuest?: boolean }): string {
   const payload: JwtPayload = {
     id: guestUser.id,
     email: guestUser.email,
-    name: guestUser.name,
+    username: guestUser.username,
     isGuest: guestUser.isGuest || true,
   };
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
@@ -94,7 +94,7 @@ export function verifyToken(token: string): UserPayload {
 
       // isGuestも含めて返す
       const payload = decoded as UserPayload & { isGuest?: boolean };
-      if (!payload.id || !payload.email || !payload.name) {
+      if (!payload.id || !payload.email || !payload.username) {
         console.error('Invalid token payload:', payload);
         throw new Error('Invalid token payload');
       }
@@ -102,7 +102,7 @@ export function verifyToken(token: string): UserPayload {
       return {
         id: payload.id,
         email: payload.email,
-        name: payload.name,
+        username: payload.username,
         emailVerified: payload.emailVerified,
         isGuest: payload.isGuest,
       };

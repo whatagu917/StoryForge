@@ -70,7 +70,7 @@ export default async function handler(
       const tokenPayload = {
         id: user.id,
         email: user.email,
-        name: user.name || '',
+        username: user.username || '',
         emailVerified: user.emailVerified
       };
       console.log('Token payload:', tokenPayload);
@@ -85,7 +85,7 @@ export default async function handler(
     const userResponse = {
       id: user.id,
       email: user.email,
-      name: user.name,
+      username: user.username,
       emailVerified: user.emailVerified,
     };
 
