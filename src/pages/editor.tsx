@@ -704,7 +704,7 @@ function Editor() {
           // リビジョンデータを準備
           const revisionData = {
             content: currentChapter.content,
-            previousContent: lastSavedContent || '',
+            previousContent: lastSavedContent || currentChapter.content,
             chapterId: currentChapter.id,
             storyId: currentStory.id,
             type: 'manual',
